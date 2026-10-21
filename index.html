@@ -118,8 +118,7 @@ footer{margin-top:28px;color:var(--muted);font-size:13px}
     <p class="hint">La clave solo se usa desde tu navegador para consultar a Google. Restríngela en Google Cloud a tu dominio (por ejemplo, <code>https://tu-usuario.github.io/*</code>).</p>
   </div>
   <div class="row" style="margin-top:14px">
-    <label class="check"><input type="checkbox" id="testMode" checked> Modo prueba: solo los primeros 5 registros</label>
-    <label class="check"><input type="checkbox" id="updateOrig" checked> Escribir las coordenadas validadas en las columnas originales</label>
+    <label class="check"><input type="checkbox" id="testMode"> Modo prueba: procesar solo los primeros 5 registros</label>
   </div>
   <div class="row" style="margin-top:14px">
     <button class="primary" id="run">Georreferenciar</button>
@@ -141,7 +140,10 @@ footer{margin-top:28px;color:var(--muted);font-size:13px}
         <option>SIN_RESULTADO</option><option>SIN_GEO</option><option>ERROR</option>
       </select>
     </div>
-    <button class="primary" id="download">Descargar Excel</button>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="detalle"> Incluir columnas de detalle (observaciones, fuente, resumen)</label>
+      <button class="primary" id="download">Descargar Excel</button>
+    </div>
   </div>
   <div class="table-wrap"><table id="table"></table></div>
 </section>
@@ -718,7 +720,13 @@ async function georreferenciar(fila, prov) {
     obs.push(`${nom.marcaBusqueda} opera principalmente en ${nom.ciudadesMarca.map(nombreMunicipio).join(", ")}; verificar la ciudad registrada.`);
   // Candidato propuesto para revisar en el mapa
   const m = /(-?\d{1,2}\.\d{5,}), (-?\d{1,3}\.\d{5,})/.exec(obs.join(" "));
-  if (res.lat === null && m) res.propuesta = [+m[1], +m[2]];
+  if (res.lat === null && m) {
+    res.propuesta = [+m[1], +m[2]];
+    if (!res.direccion) {   // dirección del lugar propuesto, para mostrarla y exportarla
+      const lugar = [...cands, ...centros].find(c => Math.abs(c.lat - res.propuesta[0]) < 1e-5 && Math.abs(c.lon - res.propuesta[1]) < 1e-5);
+      if (lugar) Object.assign(res, {direccion: lugar.direccion, nombre: res.nombre || lugar.nombre});
+    }
+  }
   return res;
 }
 
@@ -842,19 +850,20 @@ function pintar() {
     ["Sin resultado", cuenta("SIN_RESULTADO")], ["Sin geo (conservados)", cuenta("SIN_GEO")], ["Errores", cuenta("ERROR")],
   ].map(([t, v]) => `<div class="card"><b>${v}</b><span>${t}</span></div>`).join("");
   const filtro = $("#filter").value;
-  const cab = ["#", m.id || "Código", "PDV", "Ciudad", "Dirección", "Estado", "Latitud", "Longitud", "Encontrado", "Observaciones", "Mapa"];
+  const cab = ["#", m.id || "Código", "PDV", "Ciudad", "Dirección", "Ubicación", "Latitud", "Longitud", "Dirección en el mapa", "Observaciones", "Mapa"];
   let html = "<thead><tr>" + cab.map(c => `<th>${escapar(c)}</th>`).join("") + "</tr></thead><tbody>";
   filas.forEach((f, i) => {
     const r = resultados[i];
     const est = r ? r.estado : "PENDIENTE";
     if (filtro && est !== filtro) return;
-    const lat = r && r.lat !== null ? r.lat : (r && r.estado === "SIN_GEO" ? f[m.lat] : "");
-    const lon = r && r.lon !== null ? r.lon : (r && r.estado === "SIN_GEO" ? f[m.lon] : "");
+    const p = puntoDe(r);
+    const lat = p ? p[0] : (r && r.estado === "SIN_GEO" ? f[m.lat] : "");
+    const lon = p ? p[1] : (r && r.estado === "SIN_GEO" ? f[m.lon] : "");
     const punto = r && r.lat !== null ? `${r.lat},${r.lon}` : r && r.propuesta ? r.propuesta.join(",") : null;
     const q = punto || [f[m.nombre], m.direccion ? f[m.direccion] : "", f[m.ciudad], "Colombia"].filter(Boolean).join(", ");
     html += `<tr><td>${i + 1}</td><td>${escapar(f[m.id])}</td><td>${escapar(f[m.nombre])}</td><td>${escapar(f[m.ciudad])}</td>` +
-      `<td>${escapar(m.direccion ? f[m.direccion] : "")}</td><td><span class="chip ${est}">${est}</span></td>` +
-      `<td>${escapar(lat)}</td><td>${escapar(lon)}</td><td>${escapar(r ? r.nombre || r.direccion : "")}</td>` +
+      `<td>${escapar(m.direccion ? f[m.direccion] : "")}</td><td><span class="chip ${est}">${escapar(ubicacionDe(r))}</span></td>` +
+      `<td>${escapar(lat)}</td><td>${escapar(lon)}</td><td>${escapar(r && r.estado !== "SIN_GEO" ? String(r.direccion || "").toUpperCase() : "")}</td>` +
       `<td class="obs">${escapar(r ? r.obs.join(" ") : "")}</td>` +
       `<td><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}">${punto ? "Ver" : "Buscar"}</a></td></tr>`;
   });
@@ -888,33 +897,47 @@ function pintarMapa() {
 
 /* ============================== Excel de salida ============================== */
 $("#download").addEventListener("click", descargar);
+/** Punto en el mapa para la fila: el validado o, si quedó por revisar, el candidato propuesto. */
+const puntoDe = r => !r || r.estado === "SIN_GEO" ? null : r.lat !== null ? [r.lat, r.lon] : r.propuesta || null;
+const ubicacionDe = r => !r ? "NO PROCESADA" : r.estado === "SIN_GEO" ? "SIN GEO" :
+  r.estado === "GEORREFERENCIADO" ? "VERIFICADA" : puntoDe(r) ? "POR CONFIRMAR" : "NO ENCONTRADA";
+
 function descargar() {
-  const m = mapeo(), actualizar = $("#updateOrig").checked;
-  // Se copia la hoja original celda por celda (tipos y formatos intactos) y se agregan columnas al final
+  const m = mapeo(), detalle = $("#detalle").checked;
+  const pendientes = resultados.filter(r => !r).length;
+  if (!resultados.length || pendientes === filas.length) { estado("Primero pulsa Georreferenciar.", true); return; }
+  if (pendientes && !confirm(`Solo se procesaron ${filas.length - pendientes} de ${filas.length} registros` +
+      `${$("#testMode").checked ? " (modo prueba activado)" : ""}. Los ${pendientes} restantes saldrán sin coordenadas.\n\n¿Descargar de todas formas?`)) return;
+  // Se copia la hoja original celda por celda (tipos y formatos intactos)
   const ws = JSON.parse(JSON.stringify(libro.Sheets[hoja]));
   const rango = XLSX.utils.decode_range(ws["!ref"]);
   const cabecera = [];
   for (let c = rango.s.c; c <= rango.e.c; c++) { const celda = ws[XLSX.utils.encode_cell({r: rango.s.r, c})]; cabecera.push(celda ? String(celda.v) : ""); }
   const colLat = cabecera.indexOf(m.lat) + rango.s.c, colLon = cabecera.indexOf(m.lon) + rango.s.c;
-  const nuevas = ["LATITUD_ORIGINAL", "LONGITUD_ORIGINAL", "NOMBRE_ENCONTRADO", "DIRECCION_ENCONTRADA", "CIUDAD_ENCONTRADA",
-    "LATITUD_VALIDADA", "LONGITUD_VALIDADA", "ESTADO_GEORREFERENCIACION", "FUENTE_COORDENADAS", "PLACE_ID",
-    "TIPO_COINCIDENCIA", "OBSERVACIONES"];
+  const nuevas = ["DIRECCION_MAPA", "UBICACION"];
+  if (detalle) nuevas.push("LATITUD_ORIGINAL", "LONGITUD_ORIGINAL", "NOMBRE_ENCONTRADO", "CIUDAD_ENCONTRADA",
+    "ESTADO_GEORREFERENCIACION", "FUENTE_COORDENADAS", "PLACE_ID", "TIPO_COINCIDENCIA", "OBSERVACIONES");
   const extra = [nuevas];
   filas.forEach((f, i) => {
-    const r = resultados[i], fila = rango.s.r + 1 + i;
-    if (r && r.estado === "GEORREFERENCIADO" && actualizar) {
-      if (m.lat) ws[XLSX.utils.encode_cell({r: fila, c: colLat})] = {t: "n", v: r.lat, z: "0.0000000"};
-      if (m.lon) ws[XLSX.utils.encode_cell({r: fila, c: colLon})] = {t: "n", v: r.lon, z: "0.0000000"};
+    const r = resultados[i], fila = rango.s.r + 1 + i, p = puntoDe(r);
+    // LATITUD/LONGITUD: coordenada del mapa; "sin geo" se conserva; sin ubicación queda vacía (no "4")
+    if (r && r.estado !== "SIN_GEO") {
+      const lat = p ? {t: "n", v: p[0], z: "0.0000000"} : {t: "s", v: ""};
+      const lon = p ? {t: "n", v: p[1], z: "0.0000000"} : {t: "s", v: ""};
+      if (m.lat) ws[XLSX.utils.encode_cell({r: fila, c: colLat})] = lat;
+      if (m.lon) ws[XLSX.utils.encode_cell({r: fila, c: colLon})] = lon;
     }
-    extra.push([m.lat ? f[m.lat] : "", m.lon ? f[m.lon] : "", r?.nombre || "", r?.direccion || "", r?.ciudad || "",
-      r && r.lat !== null ? r.lat : (r?.estado === "SIN_GEO" ? f[m.lat] : ""),
-      r && r.lon !== null ? r.lon : (r?.estado === "SIN_GEO" ? f[m.lon] : ""),
-      r ? r.estado : "NO_PROCESADO", r?.fuente || "", r?.id || "", r?.tipo || "", r ? r.obs.join(" ") : ""]);
+    const filaExtra = [r && r.estado !== "SIN_GEO" ? String(r.direccion || "").toUpperCase() : "", ubicacionDe(r)];
+    if (detalle) filaExtra.push(m.lat ? f[m.lat] : "", m.lon ? f[m.lon] : "", r?.nombre || "", r?.ciudad || "",
+      r ? r.estado : "NO_PROCESADO", r?.fuente || "", r?.id || "", r?.tipo || "", r ? r.obs.join(" ") : "");
+    extra.push(filaExtra);
   });
   XLSX.utils.sheet_add_aoa(ws, extra, {origin: {r: rango.s.r, c: rango.e.c + 1}});
-  ws["!cols"] = [...cabecera, ...nuevas].map(k => ({wch: k === "OBSERVACIONES" ? 90 : /DIRECCION|NOMBRE|PDV/.test(k) ? 40 : 16}));
+  ws["!cols"] = [...cabecera, ...nuevas].map(k => ({wch: k === "OBSERVACIONES" ? 90 : /DIRECCION|NOMBRE|PDV/.test(k) ? 40 : 14}));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, (hoja || "Datos").slice(0, 31));
+  const base = (nombreArchivoActual || "puntos_de_venta").replace(/\.[^.]+$/, "").replace(/\s+/g, "_");
+  if (!detalle) { XLSX.writeFile(wb, `${base}_coordenadas.xlsx`); return; }
   const cuenta = k => resultados.filter(r => r && r.estado === k).length;
   const resumen = [["Indicador", "Valor"],
     ["Total de puntos de venta", filas.length],
@@ -930,8 +953,7 @@ function descargar() {
   const wr = XLSX.utils.aoa_to_sheet(resumen);
   wr["!cols"] = [{wch: 44}, {wch: 40}, {wch: 16}, {wch: 18}, {wch: 100}];
   XLSX.utils.book_append_sheet(wb, wr, "Resumen");
-  const base = (nombreArchivoActual || "puntos_de_venta").replace(/\.[^.]+$/, "");
-  XLSX.writeFile(wb, `${base.replace(/\s+/g, "_")}_georreferenciado.xlsx`);
+  XLSX.writeFile(wb, `${base}_georreferenciado_detalle.xlsx`);
 }
 
 // Para pruebas automatizadas: cargarLibro(arrayBuffer, nombre)

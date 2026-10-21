@@ -8,6 +8,23 @@ Página web estática (un solo `index.html`). Arrastras un Excel de puntos de ve
 - Servicios disponibles: **Google Maps** (Places API (New) + Geocoding API, con tu API key) u **OpenStreetMap** (gratis, más lento y con menos cobertura).
 - El modo prueba procesa solo los primeros 5 registros. Las consultas se guardan en el navegador, así que al repetir no se vuelven a pagar.
 
+## El Excel descargado
+
+El Excel simple, que es el que se descarga por defecto, trae tus columnas originales. Además:
+
+- `LATITUD` y `LONGITUD` llevan la coordenada del mapa. Los registros marcados `sin geo` conservan ese texto, y los que no se encontraron quedan vacíos.
+- `DIRECCION_MAPA` trae la dirección del lugar encontrado, en mayúsculas.
+- `UBICACION` indica el resultado de cada registro:
+
+| Valor | Significado |
+|---|---|
+| `VERIFICADA` | Coinciden la sede, la dirección y la ciudad. |
+| `POR CONFIRMAR` | Hay un punto probable, pero hay dudas (varias sedes posibles, otra ciudad u otra dirección). Revísalo en el mapa. |
+| `NO ENCONTRADA` | No se ubicó el registro. |
+| `SIN GEO` | El registro venía marcado `sin geo` y se dejó así. |
+
+Si marcas *Incluir columnas de detalle*, se agregan las observaciones, la fuente, los valores originales y la hoja *Resumen*.
+
 ## Publicar en GitHub Pages
 
 1. Crea un repositorio en GitHub, por ejemplo `georreferenciador`.
