@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Georreferenciador de PDV</title>
+<meta name="description" content="Sube un Excel de puntos de venta y obtén sus coordenadas validadas.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --text:#1c2430; --muted:#5d6b7c; --line:#dde2e8;
+  --accent:#1f6feb; --accent-ink:#ffffff; --soft:#eef4ff;
+  --ok:#1a7f37; --ok-bg:#dafbe1; --warn:#9a6700; --warn-bg:#fff4c5;
+  --bad:#cf222e; --bad-bg:#ffebe9; --gray:#57606a; --gray-bg:#eaeef2;
+  --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1117; --panel:#161b22; --text:#e6edf3; --muted:#9aa7b4; --line:#30363d;
+    --accent:#4493f8; --accent-ink:#0d1117; --soft:#132339;
+    --ok:#3fb950; --ok-bg:#12261a; --warn:#d29922; --warn-bg:#2b2111;
+    --bad:#f85149; --bad-bg:#2d1416; --gray:#9aa7b4; --gray-bg:#21262d;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1117; --panel:#161b22; --text:#e6edf3; --muted:#9aa7b4; --line:#30363d;
+  --accent:#4493f8; --accent-ink:#0d1117; --soft:#132339;
+  --ok:#3fb950; --ok-bg:#12261a; --warn:#d29922; --warn-bg:#2b2111;
+  --bad:#f85149; --bad-bg:#2d1416; --gray:#9aa7b4; --gray-bg:#21262d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:28px 16px 60px}
+header h1{font-size:28px;margin:0 0 6px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted);max-width:760px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-top:18px}
+.panel h2{font-size:16px;margin:0 0 12px}
+.step{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);align-items:center;justify-content:center;font-size:13px;font-weight:600;margin-right:8px}
+#drop{border:2px dashed var(--line);border-radius:var(--radius);padding:36px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg)}
+#drop:hover,#drop.over{border-color:var(--accent);background:var(--soft)}
+#drop strong{font-size:17px;display:block;margin-bottom:4px}
+#drop span{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+select,input[type=text],input[type=password]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font:inherit}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.opt{display:flex;gap:8px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;flex:1;min-width:240px}
+.opt:has(input:checked){border-color:var(--accent);background:var(--soft)}
+.opt small{display:block;color:var(--muted)}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--text);padding:9px 16px;border-radius:8px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button:disabled{opacity:.5;cursor:not-allowed}
+.hint{color:var(--muted);font-size:13px;margin:8px 0 0}
+.check{display:flex;gap:6px;align-items:center;color:var(--text);font-size:14px;margin:0}
+#progress{height:8px;background:var(--gray-bg);border-radius:4px;overflow:hidden;margin-top:14px}
+#progress div{height:100%;width:0;background:var(--accent);transition:width .2s}
+#status{margin-top:8px;color:var(--muted);font-size:14px;min-height:1.5em}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px}
+.card b{display:block;font-size:24px}
+.card span{color:var(--muted);font-size:13px}
+#map{height:420px;border-radius:10px;border:1px solid var(--line);margin-top:14px}
+.table-wrap{overflow:auto;max-height:560px;margin-top:14px;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:var(--panel);z-index:1}
+td.obs{min-width:320px;color:var(--muted)}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.GEORREFERENCIADO{background:var(--ok-bg);color:var(--ok)}
+.REVISAR{background:var(--warn-bg);color:var(--warn)}
+.SIN_RESULTADO,.ERROR{background:var(--bad-bg);color:var(--bad)}
+.SIN_GEO,.PENDIENTE{background:var(--gray-bg);color:var(--gray)}
+a{color:var(--accent)}
+.hidden{display:none}
+.err{color:var(--bad)}
+footer{margin-top:28px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Georreferenciador de puntos de venta</h1>
+  <p>Arrastra tu Excel. La página identifica las columnas, busca cada establecimiento y valida la ubicación con la dirección y la ciudad. Al final puedes descargar el Excel con las coordenadas. Todo ocurre en tu navegador: el archivo no se sube a ningún servidor.</p>
+</header>
+
+<section class="panel">
+  <h2><span class="step">1</span>Archivo</h2>
+  <div id="drop" tabindex="0" role="button" aria-label="Seleccionar archivo">
+    <strong>Arrastra aquí tu archivo .xlsx, .xls o .csv</strong>
+    <span>o haz clic para elegirlo</span>
+  </div>
+  <input type="file" id="file" accept=".xlsx,.xls,.csv" class="hidden">
+  <p id="fileInfo" class="hint"></p>
+</section>
+
+<section class="panel hidden" id="cfg">
+  <h2><span class="step">2</span>Columnas detectadas</h2>
+  <div class="grid" id="mapping"></div>
+  <p class="hint">Revisa que cada campo apunte a la columna correcta. Si la latitud o la longitud dicen <b>sin geo</b>, el registro se conserva tal cual, sin buscarlo.</p>
+</section>
+
+<section class="panel hidden" id="prov">
+  <h2><span class="step">3</span>Servicio de búsqueda</h2>
+  <div class="row">
+    <label class="opt"><input type="radio" name="prov" value="google" checked>
+      <div><b>Google Maps</b> (recomendado)<small>Mejor cobertura de comercios en Colombia. Requiere una API key con Places API (New) y Geocoding API habilitadas; puede generar costos.</small></div></label>
+    <label class="opt"><input type="radio" name="prov" value="osm">
+      <div><b>OpenStreetMap</b> (gratis)<small>Más lento (1 consulta por segundo) y con menos establecimientos registrados.</small></div></label>
+  </div>
+  <div id="keyBox" style="margin-top:12px">
+    <label for="apikey">API key de Google</label>
+    <input type="password" id="apikey" placeholder="AIza..." autocomplete="off">
+    <div class="row" style="margin-top:6px">
+      <label class="check"><input type="checkbox" id="remember"> Recordarla en este navegador</label>
+    </div>
+    <p class="hint">La clave solo se usa desde tu navegador para consultar a Google. Restríngela en Google Cloud a tu dominio (por ejemplo, <code>https://tu-usuario.github.io/*</code>).</p>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <label class="check"><input type="checkbox" id="testMode" checked> Modo prueba: solo los primeros 5 registros</label>
+    <label class="check"><input type="checkbox" id="updateOrig" checked> Escribir las coordenadas validadas en las columnas originales</label>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <button class="primary" id="run">Georreferenciar</button>
+    <button id="stop" disabled>Detener</button>
+  </div>
+  <div id="progress"><div></div></div>
+  <div id="status"></div>
+</section>
+
+<section class="panel hidden" id="results">
+  <h2><span class="step">4</span>Resultados</h2>
+  <div class="cards" id="cards"></div>
+  <div id="map"></div>
+  <div class="row" style="margin-top:14px;justify-content:space-between">
+    <div class="row">
+      <label for="filter" style="margin:0">Mostrar</label>
+      <select id="filter" style="width:auto">
+        <option value="">Todos</option><option>GEORREFERENCIADO</option><option>REVISAR</option>
+        <option>SIN_RESULTADO</option><option>SIN_GEO</option><option>ERROR</option>
+      </select>
+    </div>
+    <button class="primary" id="download">Descargar Excel</button>
+  </div>
+  <div class="table-wrap"><table id="table"></table></div>
+</section>
+
+<footer>
+  Estados: <b>GEORREFERENCIADO</b>, sede identificada con evidencia; <b>REVISAR</b>, varias coincidencias, una discrepancia o una ubicación aproximada; <b>SIN_RESULTADO</b>, sin coincidencia confiable; <b>SIN_GEO</b>, el registro viene marcado "sin geo" y se conserva igual; <b>ERROR</b>, falló el servicio.
+  Datos de OpenStreetMap © colaboradores de OpenStreetMap (ODbL).
+</footer>
+</main>
+
+<script>
+"use strict";
+/* ============================== Texto ============================== */
+const sinAcentos = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+const clave = s => sinAcentos(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+const tokens = s => sinAcentos(s).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+const vacio = v => v === null || v === undefined || String(v).trim() === "";
+const titulo = s => String(s).toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+const contieneSeq = (toks, seq) => toks.some((_, i) => seq.every((t, j) => toks[i + j] === t));
+const fmt = (lat, lon) => `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
+/* ============================== Catálogos ============================== */
+const DEPARTAMENTOS = {IBAGUE:"Tolima",PEREIRA:"Risaralda",DOSQUEBRADAS:"Risaralda","LA VIRGINIA":"Risaralda",
+  BARRANQUILLA:"Atlántico",SOLEDAD:"Atlántico","PUERTO COLOMBIA":"Atlántico",MALAMBO:"Atlántico",BOGOTA:"Bogotá",
+  SOACHA:"Cundinamarca",FACATATIVA:"Cundinamarca",ZIPAQUIRA:"Cundinamarca",CHIA:"Cundinamarca",TUNJA:"Boyacá",
+  MEDELLIN:"Antioquia",BELLO:"Antioquia",ENVIGADO:"Antioquia",SABANETA:"Antioquia",ITAGUI:"Antioquia",
+  "LA ESTRELLA":"Antioquia",RIONEGRO:"Antioquia",CALI:"Valle del Cauca",YUMBO:"Valle del Cauca",JAMUNDI:"Valle del Cauca",
+  PALMIRA:"Valle del Cauca",BUCARAMANGA:"Santander",FLORIDABLANCA:"Santander",GIRON:"Santander",PIEDECUESTA:"Santander",
+  MANIZALES:"Caldas",VILLAMARIA:"Caldas",CARTAGENA:"Bolívar","SANTA MARTA":"Magdalena",CUCUTA:"Norte de Santander",
+  VILLAVICENCIO:"Meta",ARMENIA:"Quindío",NEIVA:"Huila",PASTO:"Nariño",MONTERIA:"Córdoba",VALLEDUPAR:"Cesar",POPAYAN:"Cauca"};
+const AREA_METROPOLITANA = {PEREIRA:["DOSQUEBRADAS","LA VIRGINIA"],DOSQUEBRADAS:["PEREIRA"],
+  MEDELLIN:["BELLO","ENVIGADO","ITAGUI","SABANETA"],BELLO:["MEDELLIN"],ENVIGADO:["MEDELLIN","SABANETA","ITAGUI"],
+  SABANETA:["ENVIGADO","MEDELLIN","LA ESTRELLA"],BARRANQUILLA:["SOLEDAD","PUERTO COLOMBIA","MALAMBO"],
+  BUCARAMANGA:["FLORIDABLANCA","GIRON","PIEDECUESTA"],FLORIDABLANCA:["BUCARAMANGA","PIEDECUESTA","GIRON"],
+  CALI:["YUMBO","JAMUNDI"],BOGOTA:["SOACHA","CHIA"],MANIZALES:["VILLAMARIA"]};
+const ALIAS_MUNICIPIO = [[["FLORIDA","B"],"FLORIDABLANCA"]];
+// [código, nombre para buscar, alias (secuencias de tokens), ciudades sede de la cadena]
+const MARCAS = [
+  ["EXITO","Éxito",[["EXITO"]],[]], ["OLIMPICA","Olímpica",[["OLIMPICA"],["SAO"]],[]],
+  ["MAKRO","Makro",[["MAKRO"]],[]], ["EURO","Euro Supermercados",[["EURO"]],[]],
+  ["MERCALDAS","Mercaldas",[["MERCALDAS"]],["MANIZALES"]], ["SUPERMU","Supermú",[["SUPERMU"],["SUPER","MU"]],[]],
+  ["SUPERINTER","Super Inter",[["SUPERINTER"],["SUPER","INTER"]],[]],
+  ["LAMONTANA","La Montaña Agromercados",[["LA","MONTANA"],["AGROMERCADOS"],["LA","14"]],[]],
+  ["MASXMENOS","Mas x Menos",[["MAS","POR","MENOS"],["MAS","X","MENOS"],["MASXMENOS"]],[]],
+  ["METROPOL","Metropol",[["METROPOL"]],[]], ["MEGATIENDAS","Megatiendas",[["MEGATIENDA"],["MEGATIENDAS"]],[]],
+  ["ZAPATOCA","Mercados Zapatoca",[["ZAPATOCA"]],[]], ["MERCACENTRO","Mercacentro",[["MERCACENTRO"]],[]],
+  ["SURTIPLAZA","Surtiplaza",[["SURTIPLAZA"]],[]], ["VAQUITA","La Vaquita",[["VAQUITA"]],[]],
+  ["CARULLA","Carulla",[["CARULLA"]],[]], ["JUMBO","Jumbo",[["JUMBO"]],[]], ["D1","Tiendas D1",[["D1"]],[]],
+  ["ARA","Tiendas Ara",[["ARA"]],[]], ["ALKOSTO","Alkosto",[["ALKOSTO"]],[]], ["COLSUBSIDIO","Colsubsidio",[["COLSUBSIDIO"]],[]],
+  ["CONSUMO","Consumo",[["CONSUMO"]],[]], ["CAFAM","Cafam",[["CAFAM"]],[]], ["SURTIMAX","Surtimax",[["SURTIMAX"]],[]],
+];
+const GENERICAS = new Set(["SUPERMERCADO","SUPERMERCADOS","AUTOSERVICIO","AUTOSERVICIOS","MERCADOS","MERCADO",
+  "SUPERTIENDAS","SUPERTIENDA","SAS","S","A","SA","DE","LA","EL","LOS","LAS","DEL","Y","N","NO"]);
+const SEDE_GENERICA = new Set(["CENTRO","NORTE","SUR","PLAZA","PARQUE","CALLE","CARRERA","AVENIDA","EXPRESS"]);
+const ABREV = {CL:"CALLE",CLL:"CALLE",CR:"CARRERA",CRA:"CARRERA",KR:"CARRERA",PZ:"PLAZA",CC:"CENTRO COMERCIAL",AV:"AVENIDA"};
+const AJENOS = new Set(["OPTICA","OPTICAS","DROGUERIA","DROGUERIAS","FARMACIA","CAJERO","ATM","PARQUEADERO","ESTACION",
+  "BANCO","VIAJES","SEGUROS","GASOLINERA","SERVITECA","CLUB","VINO","VINOS","LICORES","LICORERA","AKT","MOTOS","BALOTO","PAC","EDS"]);
+const TIPOS_TIENDA = new Set(["supermarket","grocery_store","store","food_store","department_store","hypermarket",
+  "wholesaler","discount_store","convenience_store","shopping_mall","market","warehouse_store","butcher_shop"]);
+const expandir = toks => toks.flatMap(t => (ABREV[t] || t).split(" "));
+const nombreMunicipio = c => ({BOGOTA:"Bogotá",MEDELLIN:"Medellín",IBAGUE:"Ibagué",FACATATIVA:"Facatativá",
+  ZIPAQUIRA:"Zipaquirá",ITAGUI:"Itagüí",GIRON:"Girón",JAMUNDI:"Jamundí",VILLAMARIA:"Villamaría",CHIA:"Chía",
+  CUCUTA:"Cúcuta",POPAYAN:"Popayán",MONTERIA:"Montería"}[c] || titulo(c));
+const codigoMunicipio = s => { const k = clave(s).toUpperCase();
+  return Object.keys(DEPARTAMENTOS).find(m => clave(m).toUpperCase() === k) || sinAcentos(s).trim().toUpperCase(); };
+
+/* ============================== Coordenadas originales ============================== */
+const esSinGeo = (lat, lon) => /sin\s*geo/i.test(`${lat ?? ""} ${lon ?? ""}`);
+const enColombia = (lat, lon) => lat >= -4.3 && lat <= 13.6 && lon >= -82 && lon <= -66.8;
+function diagnostico(lat, lon) {
+  if (esSinGeo(lat, lon)) return "Marcado 'sin geo'";
+  if (vacio(lat) || vacio(lon)) return "Coordenadas vacías";
+  const a = parseFloat(String(lat).replace(",", ".")), b = parseFloat(String(lon).replace(",", "."));
+  if (isNaN(a) || isNaN(b)) return `Coordenadas no numéricas (${lat}, ${lon})`;
+  if (Number.isInteger(a) && Number.isInteger(b)) return `Valor marcador ${lat}/${lon} pendiente de verificación` + (enColombia(a, b) ? "" : " (fuera de Colombia)");
+  if (!enColombia(a, b)) return `Coordenadas originales fuera de Colombia (${a}, ${b})`;
+  return "Coordenadas originales numéricas (no verificadas)";
+}
+
+/* ============================== Direcciones colombianas ============================== */
+const TIPOS_VIA = {CL:"Calle",CLL:"Calle",CALLE:"Calle",AC:"Avenida Calle",CR:"Carrera",CRA:"Carrera",KR:"Carrera",
+  KRA:"Carrera",CARRERA:"Carrera",AK:"Avenida Carrera",DG:"Diagonal",DIAGONAL:"Diagonal",TV:"Transversal",
+  TR:"Transversal",TRANSVERSAL:"Transversal",AV:"Avenida",AVENIDA:"Avenida"};
+const CRUCE_POR_TIPO = {"Calle":["Carrera","Transversal"],"Avenida Calle":["Carrera","Transversal"],"Diagonal":["Carrera","Transversal"],
+  "Carrera":["Calle","Diagonal"],"Avenida Carrera":["Calle","Diagonal"],"Transversal":["Calle","Diagonal"],"Avenida":["Calle","Carrera"]};
+const SENTIDOS = {SUR:"Sur",NORTE:"Norte",ESTE:"Este",OESTE:"Oeste"};
+const direccionAusente = d => vacio(d) || ["sindireccion","sindir","sd","na","nodisponible","notiene","0"].includes(clave(d));
+
+function leerNumero(toks, i) {
+  if (i >= toks.length) return [null, i];
+  const m = /^(\d+)([A-Z]{0,4})$/.exec(toks[i]);
+  if (!m) return [null, i];
+  let numero = m[1], suf = m[2], letra = "", bis = false, sentido = "";
+  i++;
+  if (suf.endsWith("BIS")) { letra = suf.slice(0, -3); bis = true; }
+  else if (suf.length === 2 && "NS".includes(suf[1])) { letra = suf[0]; sentido = suf[1] === "N" ? "Norte" : "Sur"; }
+  else letra = suf;
+  while (i < toks.length) {
+    const t = toks[i];
+    if (!letra && /^[A-H]$/.test(t)) letra = t;
+    else if (t === "BIS") bis = true;
+    else if (SENTIDOS[t]) sentido = SENTIDOS[t];
+    else break;
+    i++;
+  }
+  return [numero + letra + (bis ? " Bis" : "") + (sentido ? " " + sentido : ""), i];
+}
+
+function parsearDireccion(dir) {
+  const d = {original: vacio(dir) ? "" : String(dir), ausente: false, tipo: null, nombreVia: null, numero: null,
+    cruceTipo: null, cruce: null, placa: null, esquina: false, complemento: "", problemas: []};
+  if (direccionAusente(dir)) { d.ausente = true; d.problemas.push("Dirección ausente"); return d; }
+  let texto = sinAcentos(d.original).toUpperCase()
+    .replace(/N[°º]|\bNO\.?(?=\s|\d)|\bNRO\.?|#|-|\.|,/g, " ");
+  const toks = texto.split(/\s+/).filter(Boolean);
+  if (!toks.length || !TIPOS_VIA[toks[0]]) { d.problemas.push("Tipo de vía no reconocido"); return d; }
+  d.tipo = TIPOS_VIA[toks[0]];
+  let i = 1;
+  if (d.tipo === "Avenida" && ["CL","CALLE","CR","CRA","CARRERA","KR"].includes(toks[i])) { d.tipo = "Avenida " + TIPOS_VIA[toks[i]]; i++; }
+  if (d.tipo === "Avenida" && i < toks.length && !/^\d/.test(toks[i])) {
+    const pal = [];
+    while (i < toks.length && !/^\d/.test(toks[i])) pal.push(toks[i++]);
+    d.nombreVia = titulo(pal.join(" "));
+    [d.cruce, i] = leerNumero(toks, i);
+  } else {
+    [d.numero, i] = leerNumero(toks, i);
+    if (i < toks.length && TIPOS_VIA[toks[i]]) { d.cruceTipo = TIPOS_VIA[toks[i]]; i++; }
+    [d.cruce, i] = leerNumero(toks, i);
+  }
+  if (i < toks.length && /^\d+[A-Z]?$/.test(toks[i])) d.placa = toks[i++];
+  let resto = toks.slice(i);
+  if (resto.some(t => t === "ESQ" || t === "ESQUINA")) { d.esquina = true; resto = resto.filter(t => t !== "ESQ" && t !== "ESQUINA"); }
+  d.complemento = resto.join(" ");
+  if (d.cruceTipo && !d.placa) d.esquina = true;
+  if (!d.numero && !d.nombreVia) d.problemas.push("Sin número de vía principal");
+  if (d.numero && /^\d{4,}/.test(d.numero)) d.problemas.push(`Número de vía '${d.numero}' inusual: posible error de digitación`);
+  if (!d.cruce) d.problemas.push("Sin número de cruce");
+  else if (!d.placa && !d.esquina) d.problemas.push("Sin número de placa");
+  return d;
+}
+const viaPrincipal = d => !d.tipo ? null : d.nombreVia ? `${d.tipo} ${d.nombreVia}` : d.numero ? `${d.tipo} ${d.numero}` : null;
+const tiposCruce = d => d.cruceTipo ? [d.cruceTipo] : (CRUCE_POR_TIPO[d.tipo] || ["Calle","Carrera"]);
+const utilizable = d => !!(viaPrincipal(d) && (d.cruce || d.esquina) && !d.ausente && !d.problemas.some(p => p.includes("posible error")));
+function normalizada(d) {
+  if (d.ausente) return "";
+  const v = viaPrincipal(d);
+  if (!v) return d.original.trim();
+  if (d.esquina) return `${v} con ${tiposCruce(d)[0]} ${d.cruce}`;
+  if (d.cruce && d.placa) return `${v} # ${d.cruce}-${d.placa}`;
+  return d.cruce ? `${v} # ${d.cruce}` : v;
+}
+/** Convierte la primera parte de una dirección de Google ("Cra. 22 #17-11") al formato de la base. */
+function parsearDireccionGoogle(texto) {
+  const primera = String(texto || "").split(",")[0]
+    .replace(/\bCra\.?|\bKr\.?|\bCarrera\.?/gi, "CR").replace(/\bCl\.?|\bCll\.?|\bCalle\.?/gi, "CL")
+    .replace(/\bAk\.?/gi, "AK").replace(/\bAc\.?/gi, "AC").replace(/\bDg\.?/gi, "DG")
+    .replace(/\bTv\.?|\bTr\.?/gi, "TV").replace(/\bAv\.?/gi, "AV").replace(/\bNte\.?/gi, "NORTE");
+  return parsearDireccion(primera);
+}
+const numeroInicial = s => { const m = /^\s*(\d+)/.exec(s || ""); return m ? +m[1] : null; };
+const mismaVia = (a, b) => !!(viaPrincipal(a) && viaPrincipal(b)) &&
+  clave(viaPrincipal(a)).replace(/^avenida(?=calle|carrera)/, "") === clave(viaPrincipal(b)).replace(/^avenida(?=calle|carrera)/, "");
+
+/** Compara la dirección del candidato con la registrada. */
+function compararDireccion(reg, cand) {
+  const r = {placa: false, coherente: false, misma: false};
+  if (!reg.tipo || !cand.tipo) return r;
+  r.misma = mismaVia(reg, cand);
+  if (r.misma && reg.cruce && reg.placa && cand.cruce && cand.placa &&
+      clave(reg.cruce + reg.placa) === clave(cand.cruce + cand.placa)) r.placa = true;
+  if (r.misma && numeroInicial(cand.cruce) !== null && numeroInicial(reg.cruce) !== null)
+    r.coherente = Math.abs(numeroInicial(cand.cruce) - numeroInicial(reg.cruce)) <= 1;
+  // El local está sobre la vía del cruce con una placa que corresponde a la vía principal
+  if (!r.coherente && reg.cruce && reg.numero) {
+    const sobreCruce = tiposCruce(reg).some(t => clave(viaPrincipal(cand)) === clave(`${t} ${reg.cruce}`));
+    if (sobreCruce && numeroInicial(cand.cruce) !== null)
+      r.coherente = Math.abs(numeroInicial(cand.cruce) - numeroInicial(reg.numero)) <= 2;
+  }
+  return r;
+}
+
+/* ============================== Nombre del PDV ============================== */
+function analizarNombre(pdv, sap) {
+  const n = {original: String(pdv ?? ""), marca: null, marcaBusqueda: null, alias: [], ciudadesMarca: [],
+    sucursal: [], nucleo: [], municipioNombre: null, codigoTienda: null};
+  const texto = sinAcentos(n.original).toUpperCase();
+  const m = /^\s*(\d{3,4})\s*-/.exec(texto) || /\bSAO\s+(\d{2,3})\b/.exec(texto);
+  if (m) n.codigoTienda = m[1];
+  let toks = tokens(texto).filter(t => t !== String(sap ?? "").trim() && t !== n.codigoTienda);
+  for (const [cod, busq, alias, ciudades] of MARCAS) {
+    if (alias.some(a => contieneSeq(toks, a))) {
+      Object.assign(n, {marca: cod, marcaBusqueda: busq, alias, ciudadesMarca: ciudades});
+      for (const a of alias) for (let i = 0; i <= toks.length - a.length; i++)
+        if (a.every((t, j) => toks[i + j] === t)) toks.splice(i, a.length, ...Array(a.length).fill("\0"));
+      toks = toks.filter(t => t !== "\0");
+      break;
+    }
+  }
+  for (const [seq, muni] of ALIAS_MUNICIPIO)
+    if (contieneSeq(toks, seq)) { n.municipioNombre = muni; toks = toks.filter(t => !seq.includes(t)); }
+  for (const muni of Object.keys(DEPARTAMENTOS).sort((a, b) => b.length - a.length)) {
+    const seq = muni.split(" ");
+    if (contieneSeq(toks, seq)) { n.municipioNombre = n.municipioNombre || muni; toks = toks.filter(t => !seq.includes(t)); }
+  }
+  toks = expandir(toks);
+  n.nucleo = toks.filter(t => !GENERICAS.has(t));
+  n.sucursal = n.marca ? [...n.nucleo] : [];
+  return n;
+}
+const terminoSede = n => [n.marcaBusqueda, ...n.sucursal.map(titulo)].filter(Boolean).join(" ") || n.original;
+const nombreLimpio = n => [n.marcaBusqueda, ...n.nucleo.map(titulo)].filter(Boolean).join(" ") || n.original;
+
+function evaluarNombre(n, c) {
+  if (!c.esTienda) return {ok: false, frac: 0};
+  const tn = expandir(tokens(c.nombre)), td = expandir(tokens(c.direccion));
+  if (n.marca) {
+    const ok = n.alias.some(a => contieneSeq(tn, a)) && !tn.some(t => AJENOS.has(t));
+    if (!n.sucursal.length) return {ok, frac: 1};
+    const sede = n.sucursal.filter(t => !SEDE_GENERICA.has(t));
+    const usar = sede.length ? sede : n.sucursal;
+    const pts = usar.reduce((s, t) => s + (tn.includes(t) ? 1 : td.includes(t) && !SEDE_GENERICA.has(t) && !/^\d+$/.test(t) ? .5 : 0), 0);
+    return {ok, frac: pts / usar.length};
+  }
+  if (!n.nucleo.length) return {ok: false, frac: 0};
+  const frac = n.nucleo.filter(t => tn.includes(t)).length / n.nucleo.length;
+  return {ok: frac >= .99, frac};
+}
+function palabrasExtra(n, c) {
+  const propias = new Set([...n.alias.flat(), ...n.sucursal, ...GENERICAS, ...SEDE_GENERICA,
+    "WOW","CC","COMERCIAL","ALMACEN","SUPERALMACEN", ...Object.keys(DEPARTAMENTOS).flatMap(m => m.split(" "))]);
+  return new Set(expandir(tokens(c.nombre)).filter(t => !propias.has(t))).size;
+}
+
+/* ============================== Geometría ============================== */
+function distancia(a1, o1, a2, o2) {
+  const r = 6371008.8, p1 = a1 * Math.PI / 180, p2 = a2 * Math.PI / 180;
+  const dp = p2 - p1, dl = (o2 - o1) * Math.PI / 180;
+  const h = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(h));
+}
+function agrupar(lista, radio = 150) {
+  const grupos = [];
+  for (const e of lista) {
+    const g = grupos.find(g => distancia(e.c.lat, e.c.lon, g[0].c.lat, g[0].c.lon) <= radio);
+    g ? g.push(e) : grupos.push([e]);
+  }
+  return grupos;
+}
+
+/* ============================== Caché y red ============================== */
+const memoria = new Map();
+function cacheGet(k) {
+  if (memoria.has(k)) return memoria.get(k);
+  try { const v = localStorage.getItem("geo:" + k); if (v) { const o = JSON.parse(v); memoria.set(k, o); return o; } } catch (e) {}
+  return undefined;
+}
+function cacheSet(k, v) {
+  memoria.set(k, v);
+  try { localStorage.setItem("geo:" + k, JSON.stringify(v)); } catch (e) { /* almacenamiento lleno o bloqueado */ }
+}
+const pausa = ms => new Promise(r => setTimeout(r, ms));
+let ultimaConsulta = 0, consultasReales = 0;
+async function solicitar(url, opciones, intervalo, llave) {
+  const enCache = cacheGet(llave);
+  if (enCache !== undefined) return enCache;
+  let error;
+  for (let intento = 1; intento <= 3; intento++) {
+    const espera = intervalo - (Date.now() - ultimaConsulta);
+    if (espera > 0) await pausa(espera);
+    ultimaConsulta = Date.now();
+    try {
+      const r = await fetch(url, opciones);
+      consultasReales++;
+      if ([429, 500, 502, 503, 504].includes(r.status)) { error = `HTTP ${r.status}`; await pausa(2000 * intento); continue; }
+      const datos = await r.json();
+      if (!r.ok) {
+        const msg = datos?.error?.message || datos?.error_message || `HTTP ${r.status}`;
+        const e = new Error(msg); e.fatal = [400, 401, 403].includes(r.status); throw e;
+      }
+      if (datos.status && ["REQUEST_DENIED", "INVALID_REQUEST"].includes(datos.status)) {
+        const e = new Error(`${datos.status}: ${datos.error_message || ""}`); e.fatal = datos.status === "REQUEST_DENIED"; throw e;
+      }
+      cacheSet(llave, datos);
+      return datos;
+    } catch (e) {
+      if (e.fatal) throw e;
+      error = e.message; await pausa(1000 * intento);
+    }
+  }
+  throw new Error(`Sin respuesta tras 3 intentos (${error})`);
+}
+
+/* ============================== Proveedor Google ============================== */
+const Google = {
+  nombre: "Google Places API",
+  campos: "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.addressComponents",
+  key: "",
+  async buscar(texto, centro) {
+    const cuerpo = {textQuery: texto, languageCode: "es", regionCode: "CO", pageSize: 10};
+    if (centro) cuerpo.locationBias = {circle: {center: {latitude: centro.lat, longitude: centro.lon}, radius: centro.radio || 5000}};
+    const datos = await solicitar("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST", headers: {"Content-Type": "application/json", "X-Goog-Api-Key": this.key, "X-Goog-FieldMask": this.campos},
+      body: JSON.stringify(cuerpo)}, 200, "gp|" + JSON.stringify(cuerpo));
+    return (datos.places || []).filter(p => p.location).map(p => {
+      const comps = p.addressComponents || [];
+      const comp = t => (comps.find(c => (c.types || []).includes(t)) || {}).longText || "";
+      const tipos = p.types || [];
+      return {fuente: this.nombre, nombre: p.displayName?.text || "", direccion: p.formattedAddress || "",
+        lat: p.location.latitude, lon: p.location.longitude, id: p.id,
+        municipio: comp("locality") || comp("administrative_area_level_2"),
+        municipios: [comp("locality"), comp("administrative_area_level_2")],
+        pais: ((comps.find(c => (c.types || []).includes("country")) || {}).shortText || "").toLowerCase(),
+        esTienda: tipos.some(t => TIPOS_TIENDA.has(t)), esCC: tipos.includes("shopping_mall")};
+    });
+  },
+  async geocodificar(texto) {
+    const url = "https://maps.googleapis.com/maps/api/geocode/json?" + new URLSearchParams(
+      {address: texto, components: "country:CO", language: "es", key: this.key});
+    const datos = await solicitar(url, {}, 200, "gg|" + texto);
+    for (const r of datos.results || []) {
+      const tipo = r.geometry.location_type;
+      const comps = r.address_components || [];
+      const comp = t => (comps.find(c => c.types.includes(t)) || {}).long_name || "";
+      if ((r.types || []).includes("locality") || (r.types || []).includes("political")) {
+        return {lat: r.geometry.location.lat, lon: r.geometry.location.lng, precision: "CIUDAD",
+          municipio: comp("locality") || comp("administrative_area_level_2"), descripcion: r.formatted_address, id: r.place_id};
+      }
+      return {lat: r.geometry.location.lat, lon: r.geometry.location.lng,
+        precision: tipo === "ROOFTOP" ? "EXACTA" : tipo === "RANGE_INTERPOLATED" ? "INTERPOLADA" : "APROXIMADA",
+        municipio: comp("locality") || comp("administrative_area_level_2"),
+        municipios: [comp("locality"), comp("administrative_area_level_2")], descripcion: r.formatted_address, id: r.place_id};
+    }
+    return null;
+  },
+};
+
+/* ============================== Proveedor OpenStreetMap ============================== */
+const OSM = {
+  nombre: "OpenStreetMap/Nominatim",
+  async nominatim(params) {
+    const p = new URLSearchParams({format: "jsonv2", countrycodes: "co", addressdetails: 1, namedetails: 1,
+      extratags: 1, "accept-language": "es", limit: 10, ...params});
+    return solicitar("https://nominatim.openstreetmap.org/search?" + p, {}, 1100, "osm|" + p);
+  },
+  convertir(r) {
+    const ad = r.address || {}, nd = r.namedetails || {}, et = r.extratags || {};
+    const nombre = [...new Set([r.name, nd.name, et.brand, et.branch].filter(Boolean))].join(" ") || r.name || "";
+    return {fuente: this.nombre, nombre, direccion: r.display_name || "", lat: +r.lat, lon: +r.lon,
+      id: `${r.osm_type}/${r.osm_id}`, municipio: ad.city || ad.town || ad.village || ad.municipality || ad.county || "",
+      municipios: [...Object.values(ad), ...String(r.display_name || "").split(",")].map(s => String(s).trim()),
+      pais: ad.country_code || "", esTienda: ["shop", "amenity", "building"].includes(r.category),
+      esCC: r.type === "mall", via: ad.road || "", placa: ad.house_number || ""};
+  },
+  async buscar(texto, centro) {
+    const params = {q: texto};
+    if (centro) { const g = (centro.radio || 5000) / 111000;
+      params.viewbox = `${centro.lon - g},${centro.lat + g},${centro.lon + g},${centro.lat - g}`; params.bounded = 1; params.limit = 20; }
+    return (await this.nominatim(params)).filter(r => !["highway", "place", "boundary"].includes(r.category)).map(r => this.convertir(r));
+  },
+  async geocodificar(texto) {
+    const res = await this.nominatim({q: texto, limit: 5});
+    const r = res[0];
+    if (!r) return null;
+    const ad = r.address || {};
+    const exacta = !!ad.house_number;
+    const ciudad = ["place", "boundary"].includes(r.category);
+    return {lat: +r.lat, lon: +r.lon, precision: ciudad ? "CIUDAD" : exacta ? "EXACTA" : "APROXIMADA",
+      municipio: ad.city || ad.town || ad.village || ad.municipality || ad.county || "",
+      municipios: [...Object.values(ad), ...String(r.display_name || "").split(",")].map(s => String(s).trim()),
+      descripcion: r.display_name, id: `${r.osm_type}/${r.osm_id}`};
+  },
+};
+
+/* ============================== Georreferenciación de un registro ============================== */
+const mismoMunicipio = (texto, codigo) => {
+  const k = clave(texto).replace(/^perimetrourbano|ciudad$/g, "");
+  return !!k && (k === clave(codigo) || k === clave(nombreMunicipio(codigo)) || k.startsWith(clave(nombreMunicipio(codigo))));
+};
+async function centroCiudad(prov, codigo) {
+  const llave = `centro|${prov.nombre}|${codigo}`;
+  const c = cacheGet(llave);
+  if (c !== undefined) return c;
+  const depto = DEPARTAMENTOS[codigo];
+  const g = await prov.geocodificar(`${nombreMunicipio(codigo)}${depto && depto !== nombreMunicipio(codigo) ? ", " + depto : ""}, Colombia`);
+  const res = g ? {lat: g.lat, lon: g.lon, radio: 15000} : null;
+  cacheSet(llave, res);
+  return res;
+}
+
+async function georreferenciar(fila, prov) {
+  const obs = [diagnostico(fila.lat, fila.lon) + "."];
+  const nom = analizarNombre(fila.nombre, fila.id);
+  const d = parsearDireccion(fila.direccion);
+  const ciudad = String(fila.ciudad ?? "").trim();
+  const codCiudad = codigoMunicipio(ciudad);
+  if (nom.codigoTienda) obs.push(`Código de tienda en el nombre: ${nom.codigoTienda}.`);
+  if (d.problemas.length && !d.ausente) obs.push("Dirección: " + d.problemas.join("; ") + ".");
+  if (d.ausente) obs.push("Sin dirección: se busca por nombre y ciudad.");
+  const res = {estado: "", tipo: "", nombre: "", direccion: "", ciudad: "", lat: null, lon: null, fuente: "", id: "", obs};
+
+  // Municipios aceptables: el registrado, el que indica el nombre, su área metropolitana y las ciudades de la cadena
+  const principales = [codCiudad, nom.municipioNombre].filter((v, i, a) => v && a.indexOf(v) === i);
+  const vecinos = [...(AREA_METROPOLITANA[codCiudad] || []), ...nom.ciudadesMarca].filter(m => !principales.includes(m));
+  const enMunicipio = (o, m) => (o.municipios || [o.municipio]).some(t => mismoMunicipio(t, m));
+  const municipioDe = o => o ? [...principales, ...vecinos].find(m => enMunicipio(o, m)) || null : null;
+
+  const centro = ciudad ? await centroCiudad(prov, codCiudad) : null;
+  // P2: dirección normalizada
+  let punto = null;
+  if (utilizable(d)) {
+    punto = await prov.geocodificar(`${normalizada(d)}, ${titulo(ciudad)}, ${DEPARTAMENTOS[codCiudad] || ""}, Colombia`);
+    if (punto && (punto.precision === "CIUDAD" || !municipioDe(punto) ||
+        (punto.precision !== "EXACTA" && punto.precision !== "INTERPOLADA"))) {
+      if (punto.precision !== "CIUDAD" && !municipioDe(punto)) obs.push(`La dirección se ubicó en ${punto.municipio || "otro municipio"}; no se usa.`);
+      punto = punto.precision === "APROXIMADA" && municipioDe(punto) ? {...punto, soloReferencia: true} : null;
+    }
+  }
+  // P1 / P3: nombre + dirección + ciudad, y sede + ciudad
+  // Google recibe la ciudad dentro del texto; OSM limita la búsqueda al área de la ciudad
+  const conCiudad = (texto, muni) => prov === Google ? `${texto} ${muni}` : texto;
+  const sede = nom.marca ? terminoSede(nom) : nombreLimpio(nom);
+  const sesgo = punto && !punto.soloReferencia ? {lat: punto.lat, lon: punto.lon, radio: 2000} : centro;
+  const consultas = [];
+  if (!d.ausente && normalizada(d)) consultas.push([`${nombreLimpio(nom)}, ${normalizada(d)}, ${titulo(ciudad)}`, null]);
+  consultas.push([conCiudad(sede, titulo(ciudad)), sesgo]);
+  if (nom.marca) consultas.push([conCiudad(nom.marcaBusqueda, titulo(ciudad)), sesgo]);
+  if (nom.municipioNombre && nom.municipioNombre !== codCiudad) {
+    const cm = await centroCiudad(prov, nom.municipioNombre);
+    consultas.push([conCiudad(sede, nombreMunicipio(nom.municipioNombre)), cm]);
+  }
+  let cands = [];
+  const hechas = new Set();
+  for (const [q, s] of consultas) {
+    const k = q + JSON.stringify(s);
+    if (!hechas.has(k)) { hechas.add(k); cands.push(...await prov.buscar(q, s)); }
+  }
+  // Búsqueda en municipios vecinos si no hay una sede probable en la ciudad registrada
+  const probable = lista => lista.some(c => { const e = evaluarNombre(nom, c); return e.ok && e.frac >= (nom.sucursal.length ? .5 : 1) && principales.some(m => enMunicipio(c, m)); });
+  if (!probable(cands)) for (const m of vecinos) {
+    const cm = await centroCiudad(prov, m);
+    cands.push(...await prov.buscar(conCiudad(sede, nombreMunicipio(m)), cm));
+  }
+  // Centros comerciales nombrados en la sede (p. ej. "Plaza Salitre", "Cosmocentro")
+  const sedeCC = nom.sucursal.filter(t => !SEDE_GENERICA.has(t) && !/^\d+$/.test(t) && t !== "COMERCIAL");
+  let centros = [];
+  if (sedeCC.length) {
+    const cc = await prov.buscar(conCiudad(`Centro Comercial ${sedeCC.map(titulo).join(" ")}`, titulo(ciudad)), centro);
+    centros = cc.filter(c => { const tn = new Set(expandir(tokens(c.nombre)));
+      return (c.esCC || (tn.has("CENTRO") && tn.has("COMERCIAL")) || tn.has("MALL")) && sedeCC.every(t => tn.has(t)) && municipioDe(c); });
+  }
+  // Deduplicar
+  const vistos = new Set();
+  cands = cands.filter(c => !vistos.has(c.id) && vistos.add(c.id));
+
+  const evaluados = [];
+  for (const c of cands) {
+    const {ok, frac} = evaluarNombre(nom, c);
+    if (!ok) continue;
+    const muni = municipioDe(c);
+    if (!muni) continue;
+    const dc = c.via ? parsearDireccion(`${c.via} ${c.placa}`.replace(/^Avenida /i, "AV ").replace(/^Calle /i, "CL ").replace(/^Carrera /i, "CR "))
+                     : parsearDireccionGoogle(c.direccion);
+    const comp = compararDireccion(d, dc);
+    const dPto = punto ? distancia(c.lat, c.lon, punto.lat, punto.lon) : null;
+    const dCC = centros.length ? Math.min(...centros.map(m => distancia(c.lat, c.lon, m.lat, m.lon))) : null;
+    evaluados.push({c, frac, muni, comp, dPto, dCC: dCC !== null && dCC <= 200 ? dCC : null, extra: palabrasExtra(nom, c)});
+  }
+  const marcaSinSede = nom.marca && !nom.sucursal.length;
+  for (const e of evaluados) {
+    const sedeExacta = (nom.sucursal.length && e.frac >= .99) || (marcaSinSede && agrupar(evaluados.filter(x => x.muni === e.muni)).length === 1);
+    const lim = sedeExacta ? 300 : 150;
+    e.dirOk = e.comp.placa || e.comp.coherente || e.dCC !== null ||
+      (e.dPto !== null && !punto.soloReferencia && e.dPto <= lim);
+  }
+  const infoDireccion = (punto && !punto.soloReferencia) || centros.length > 0;
+  const fuerza = e => [e.comp.placa || e.comp.coherente ? 1 : 0, e.frac, -e.extra, -(e.dPto ?? 0)];
+  const mayor = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+  let elegido = null;
+  if (infoDireccion) {
+    const ok = evaluados.filter(e => e.dirOk);
+    if (ok.length) {
+      ok.sort((a, b) => mayor(fuerza(a), fuerza(b)) ? -1 : 1);
+      const grupos = agrupar(ok);
+      if (grupos.length === 1) elegido = ok[0];
+      else {
+        const seg = ok.find(e => distancia(e.c.lat, e.c.lon, ok[0].c.lat, ok[0].c.lon) > 150);
+        const f0 = fuerza(ok[0]).slice(0, 3), f1 = fuerza(seg).slice(0, 3);
+        if (mayor(f0, f1)) elegido = ok[0];
+        else { res.estado = "REVISAR"; obs.push(`${grupos.length} sedes compatibles con la dirección: ` +
+          grupos.slice(0, 4).map(g => `${g[0].c.nombre} (${fmt(g[0].c.lat, g[0].c.lon)})`).join(" | ") + "."); }
+      }
+    } else if (evaluados.length) {
+      const cerca = evaluados.slice().sort((a, b) => (a.dPto ?? 1e9) - (b.dPto ?? 1e9))[0];
+      if (cerca.frac >= .5 && cerca.dPto !== null && cerca.dPto <= 600) {
+        res.estado = "REVISAR"; res.tipo = "DISCREPANCIA_DIRECCION";
+        Object.assign(res, {nombre: cerca.c.nombre, direccion: cerca.c.direccion, ciudad: cerca.c.municipio, fuente: cerca.c.fuente, id: cerca.c.id});
+        obs.push(`Se encontró '${cerca.c.nombre}' a ${Math.round(cerca.dPto)} m de la dirección registrada; candidato ${fmt(cerca.c.lat, cerca.c.lon)}.`);
+      } else obs.push(`Las sedes de la marca encontradas no corresponden a la dirección` +
+        (cerca.dPto !== null ? ` (la más cercana, '${cerca.c.nombre}', está a ${Math.round(cerca.dPto)} m).` : "."));
+    }
+  } else {
+    const fuertes = nom.marca ? evaluados.filter(e => e.frac >= (nom.sucursal.length ? .5 : 1)) : evaluados;
+    const grupos = agrupar(fuertes);
+    const mejores = grupos.map(g => g.slice().sort((a, b) => mayor(fuerza(a), fuerza(b)) ? -1 : 1)[0])
+      .sort((a, b) => mayor(fuerza(a), fuerza(b)) ? -1 : 1);
+    if (mejores.length === 1 || (mejores.length > 1 && mayor(fuerza(mejores[0]).slice(0, 3), fuerza(mejores[1]).slice(0, 3)))) {
+      elegido = mejores[0];
+      elegido.soloNombre = utilizable(d) && !elegido.comp.placa && !elegido.comp.coherente;
+      obs.push("Sede identificada por nombre y municipio; la dirección no permitió verificarla" +
+        (mejores.length > 1 ? ` (se descartaron ${mejores.length - 1} sedes con nombre menos preciso).` : "."));
+    } else if (mejores.length > 1) {
+      res.estado = "REVISAR";
+      obs.push(`${mejores.length} sedes posibles con ese nombre: ` + mejores.slice(0, 4).map(e => `${e.c.nombre} (${fmt(e.c.lat, e.c.lon)})`).join(" | ") + ".");
+    } else if (evaluados.length) {
+      res.estado = "REVISAR";
+      obs.push(`Hay ${agrupar(evaluados).length} sede(s) de la marca en la zona, pero ninguna coincide con el nombre de la sede: ` +
+        agrupar(evaluados).slice(0, 4).map(g => `${g[0].c.nombre} (${fmt(g[0].c.lat, g[0].c.lon)})`).join(" | ") + ".");
+    }
+  }
+
+  if (elegido) {
+    const c = elegido.c;
+    Object.assign(res, {nombre: c.nombre, direccion: c.direccion, ciudad: nombreMunicipio(elegido.muni), fuente: c.fuente, id: c.id,
+      tipo: elegido.comp.placa ? "SEDE_IDENTIFICADA_DIRECCION_COINCIDENTE" : "SEDE_IDENTIFICADA", estado: "GEORREFERENCIADO"});
+    const partes = [];
+    if (elegido.comp.placa) partes.push("la placa coincide");
+    else if (elegido.comp.coherente) partes.push("nomenclatura coherente con la dirección");
+    if (elegido.dCC !== null) partes.push(`${Math.round(elegido.dCC)} m del centro comercial`);
+    if (elegido.dPto !== null && !punto.soloReferencia) partes.push(`${Math.round(elegido.dPto)} m del punto de la dirección`);
+    if (partes.length) obs.push("Validación: " + partes.join(", ") + ".");
+    const compl = new Set(expandir(tokens(d.complemento)));
+    const ccEnDireccion = elegido.dCC !== null && nom.sucursal.some(t => !SEDE_GENERICA.has(t) && compl.has(t));
+    if (elegido.dPto !== null && !punto.soloReferencia && elegido.dPto > 1000 && !elegido.comp.placa) {
+      if (ccEnDireccion) obs.push(`La parte numérica de la dirección se ubica a ${(elegido.dPto / 1000).toFixed(1)} km, pero la dirección cita el mismo centro comercial.`);
+      else { res.estado = "REVISAR"; res.tipo = "DISCREPANCIA_DIRECCION";
+        obs.push(`DISCREPANCIA: la sede se identificó por nombre, pero la dirección registrada está a ${(elegido.dPto / 1000).toFixed(1)} km; confirmar cuál es la correcta.`); }
+    }
+    if (!enColombia(c.lat, c.lon) || (c.pais && c.pais !== "co")) { res.estado = "REVISAR"; obs.push("Las coordenadas no están en Colombia."); }
+    if (elegido.soloNombre) {
+      res.estado = "REVISAR";
+      obs.push("La sede coincide por nombre, pero la dirección registrada no se pudo verificar en el mapa: confirmar que sea la misma.");
+    }
+    if (!principales.includes(elegido.muni) || !enMunicipio(c, codCiudad)) {
+      if (!enMunicipio(c, codCiudad)) {
+        const fuerte = elegido.comp.placa || elegido.comp.coherente || (elegido.dPto !== null && elegido.dPto <= 200);
+        if (elegido.muni === nom.municipioNombre || fuerte)
+          obs.push(`ATENCIÓN: la ciudad registrada '${ciudad}' no coincide; la sede está en ${nombreMunicipio(elegido.muni)}. Corregir la ciudad en la base.`);
+        else { res.estado = "REVISAR"; obs.push(`Discrepancia de municipio: registrada '${ciudad}', sede probable en ${nombreMunicipio(elegido.muni)}.`); }
+      }
+    }
+    const dcElegido = c.via ? null : parsearDireccionGoogle(c.direccion);
+    if (dcElegido && (elegido.comp.misma || elegido.comp.coherente) && !elegido.comp.placa && dcElegido.placa && d.placa)
+      obs.push(`La placa de la fuente (${dcElegido.cruce}-${dcElegido.placa}) difiere de la registrada (${d.cruce}-${d.placa}).`);
+    if (res.estado === "GEORREFERENCIADO") { res.lat = +c.lat.toFixed(7); res.lon = +c.lon.toFixed(7); }
+    else obs.push(`Candidato propuesto: ${fmt(c.lat, c.lon)}.`);
+  } else if (!res.estado) {
+    if (punto && !punto.soloReferencia && punto.precision === "EXACTA" && principales.some(m => enMunicipio(punto, m))) {
+      Object.assign(res, {estado: "GEORREFERENCIADO", tipo: "DIRECCION_COINCIDENTE", direccion: punto.descripcion, ciudad: punto.municipio,
+        fuente: prov === Google ? "Google Geocoding API" : prov.nombre, id: punto.id || "", lat: +punto.lat.toFixed(7), lon: +punto.lon.toFixed(7)});
+      obs.push("Ubicación exacta de la dirección; el establecimiento no figura en la fuente, no es una sede verificada.");
+    } else if (centros.length) {
+      const m = centros[0];
+      Object.assign(res, {estado: "REVISAR", tipo: "UBICACION_APROXIMADA", nombre: m.nombre, direccion: m.direccion, ciudad: m.municipio, fuente: m.fuente, id: m.id});
+      obs.push(`UBICACIÓN APROXIMADA (no verificada): centro comercial '${m.nombre}' (${fmt(m.lat, m.lon)}); el local no figura en la fuente.`);
+    } else if (punto) {
+      Object.assign(res, {estado: "REVISAR", tipo: "UBICACION_APROXIMADA", direccion: punto.descripcion, ciudad: punto.municipio, fuente: prov.nombre});
+      obs.push(`UBICACIÓN APROXIMADA (no verificada): ${punto.descripcion}, ${fmt(punto.lat, punto.lon)}; el establecimiento no se encontró en la fuente.`);
+    } else {
+      res.estado = "SIN_RESULTADO";
+      obs.push(d.ausente ? "Sin dirección y sin coincidencia confiable por nombre y ciudad." : "No se encontró el establecimiento ni se pudo ubicar la dirección.");
+    }
+  }
+  if (nom.ciudadesMarca.length && !nom.ciudadesMarca.includes(codCiudad) && res.estado !== "GEORREFERENCIADO")
+    obs.push(`${nom.marcaBusqueda} opera principalmente en ${nom.ciudadesMarca.map(nombreMunicipio).join(", ")}; verificar la ciudad registrada.`);
+  // Candidato propuesto para revisar en el mapa
+  const m = /(-?\d{1,2}\.\d{5,}), (-?\d{1,3}\.\d{5,})/.exec(obs.join(" "));
+  if (res.lat === null && m) res.propuesta = [+m[1], +m[2]];
+  return res;
+}
+
+/* ============================== Interfaz ============================== */
+const $ = s => document.querySelector(s);
+const CAMPOS = [
+  ["id", "Código (SAP)", /^(sap|codigo|cod|id|nit)$/i],
+  ["nombre", "Nombre del PDV", /^(pdv|nombre|establecimiento|razon.?social|punto.?de.?venta|tienda)$/i],
+  ["ciudad", "Ciudad", /^(ciudad|municipio|poblacion)$/i],
+  ["direccion", "Dirección", /^(direccion|dir|domicilio)$/i],
+  ["lat", "Latitud", /^(lat|latitud|latitude)$/i],
+  ["lon", "Longitud", /^(lon|lng|long|longitud|longiutd|longitude)$/i],
+];
+let libro = null, hoja = null, filas = [], columnas = [], resultados = [], detener = false, mapa = null, capa = null;
+
+const drop = $("#drop"), inputFile = $("#file");
+drop.addEventListener("click", () => inputFile.click());
+drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") inputFile.click(); });
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) leerArchivo(e.dataTransfer.files[0]); });
+inputFile.addEventListener("change", () => inputFile.files[0] && leerArchivo(inputFile.files[0]));
+
+async function leerArchivo(file) {
+  const datos = await file.arrayBuffer();
+  cargarLibro(datos, file.name);
+}
+function cargarLibro(datos, nombreArchivo) {
+  // Sin cellDates: las fechas quedan como número de serie con su formato y se exportan idénticas
+  libro = XLSX.read(datos, {type: "array"});
+  nombreArchivoActual = nombreArchivo;
+  const hojas = libro.SheetNames;
+  $("#fileInfo").innerHTML = `<b>${escapar(nombreArchivo)}</b>` + (hojas.length > 1 ?
+    ` · Hoja: <select id="sheetSel" style="width:auto">${hojas.map(h => `<option>${escapar(h)}</option>`).join("")}</select>` : ` · Hoja: ${escapar(hojas[0])}`);
+  const sel = $("#sheetSel");
+  if (sel) sel.addEventListener("change", () => cargarHoja(sel.value));
+  cargarHoja(hojas[0]);
+}
+let nombreArchivoActual = "";
+function cargarHoja(nombre) {
+  hoja = nombre;
+  filas = XLSX.utils.sheet_to_json(libro.Sheets[nombre], {defval: "", raw: true});
+  columnas = filas.length ? Object.keys(filas[0]) : [];
+  $("#fileInfo").insertAdjacentHTML("beforeend", "");
+  $("#fileInfo").dataset.count = filas.length;
+  const info = $("#fileInfo");
+  info.querySelector(".cnt")?.remove();
+  info.insertAdjacentHTML("beforeend", `<span class="cnt"> · ${filas.length} registros, ${columnas.length} columnas</span>`);
+  $("#mapping").innerHTML = CAMPOS.map(([k, etiqueta, re]) => {
+    const det = columnas.find(c => re.test(clave(c))) || columnas.find(c => re.test(sinAcentos(c).trim())) || "";
+    return `<div><label for="map_${k}">${etiqueta}</label><select id="map_${k}"><option value="">(no usar)</option>` +
+      columnas.map(c => `<option${c === det ? " selected" : ""}>${escapar(c)}</option>`).join("") + "</select></div>";
+  }).join("");
+  ["#cfg", "#prov"].forEach(s => $(s).classList.remove("hidden"));
+  resultados = [];
+  $("#results").classList.add("hidden");
+}
+const escapar = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const mapeo = () => Object.fromEntries(CAMPOS.map(([k]) => [k, $("#map_" + k).value]));
+
+// Proveedor y clave
+const radios = document.querySelectorAll("input[name=prov]");
+radios.forEach(r => r.addEventListener("change", () => $("#keyBox").classList.toggle("hidden", r.value === "osm" && r.checked)));
+try { const k = localStorage.getItem("geo_apikey"); if (k) { $("#apikey").value = k; $("#remember").checked = true; } } catch (e) {}
+
+$("#stop").addEventListener("click", () => { detener = true; $("#stop").disabled = true; });
+$("#run").addEventListener("click", ejecutar);
+
+async function ejecutar() {
+  const m = mapeo();
+  if (!m.nombre || !m.ciudad) { estado("Selecciona al menos las columnas de nombre y ciudad.", true); return; }
+  const provNombre = document.querySelector("input[name=prov]:checked").value;
+  const prov = provNombre === "google" ? Google : OSM;
+  if (prov === Google) {
+    Google.key = $("#apikey").value.trim();
+    if (!Google.key) { estado("Ingresa la API key de Google o elige OpenStreetMap.", true); return; }
+    try { $("#remember").checked ? localStorage.setItem("geo_apikey", Google.key) : localStorage.removeItem("geo_apikey"); } catch (e) {}
+  }
+  const limite = $("#testMode").checked ? 5 : filas.length;
+  detener = false; consultasReales = 0;
+  $("#run").disabled = true; $("#stop").disabled = false;
+  resultados = filas.map(() => null);
+  $("#results").classList.remove("hidden");
+  for (let i = 0; i < Math.min(limite, filas.length); i++) {
+    if (detener) break;
+    const f = filas[i];
+    const fila = {id: f[m.id], nombre: f[m.nombre], ciudad: f[m.ciudad], direccion: m.direccion ? f[m.direccion] : "",
+      lat: m.lat ? f[m.lat] : "", lon: m.lon ? f[m.lon] : ""};
+    estado(`Procesando ${i + 1} de ${limite}: ${fila.nombre}`);
+    $("#progress div").style.width = `${(i / limite) * 100}%`;
+    if (esSinGeo(fila.lat, fila.lon)) {
+      resultados[i] = {estado: "SIN_GEO", tipo: "", nombre: "", direccion: "", ciudad: "", lat: null, lon: null, fuente: "", id: "",
+        obs: ["Registro marcado 'sin geo' en la base: se conserva tal cual, sin procesar."]};
+    } else {
+      try { resultados[i] = await georreferenciar(fila, prov); }
+      catch (e) {
+        resultados[i] = {estado: "ERROR", tipo: "", nombre: "", direccion: "", ciudad: "", lat: null, lon: null, fuente: prov.nombre, id: "",
+          obs: [`Falló la consulta: ${e.message}`]};
+        if (e.fatal) { estado(`El servicio rechazó la consulta: ${e.message}. Revisa la API key y que estén habilitadas Places API (New) y Geocoding API.`, true); break; }
+      }
+    }
+    pintar();
+  }
+  $("#progress div").style.width = "100%";
+  $("#run").disabled = false; $("#stop").disabled = true;
+  const hechos = resultados.filter(Boolean).length;
+  if (!$("#status").classList.contains("err"))
+    estado(`Listo: ${hechos} registros procesados${detener ? " (detenido)" : ""}. Consultas nuevas al servicio: ${consultasReales}.` +
+      ($("#testMode").checked && filas.length > 5 ? " Si los resultados se ven bien, desmarca el modo prueba y ejecuta de nuevo; lo ya consultado no se repite." : ""));
+  pintar();
+}
+function estado(txt, error = false) { const s = $("#status"); s.textContent = txt; s.classList.toggle("err", error); }
+
+function pintar() {
+  const m = mapeo();
+  const cuenta = k => resultados.filter(r => r && r.estado === k).length;
+  const validasAntes = filas.filter(f => /numéricas/.test(diagnostico(f[m.lat], f[m.lon]))).length;
+  $("#cards").innerHTML = [
+    ["Total de puntos de venta", filas.length], ["Coordenadas válidas antes", validasAntes],
+    ["Georreferenciados", cuenta("GEORREFERENCIADO")], ["Por revisar", cuenta("REVISAR")],
+    ["Sin resultado", cuenta("SIN_RESULTADO")], ["Sin geo (conservados)", cuenta("SIN_GEO")], ["Errores", cuenta("ERROR")],
+  ].map(([t, v]) => `<div class="card"><b>${v}</b><span>${t}</span></div>`).join("");
+  const filtro = $("#filter").value;
+  const cab = ["#", m.id || "Código", "PDV", "Ciudad", "Dirección", "Estado", "Latitud", "Longitud", "Encontrado", "Observaciones", "Mapa"];
+  let html = "<thead><tr>" + cab.map(c => `<th>${escapar(c)}</th>`).join("") + "</tr></thead><tbody>";
+  filas.forEach((f, i) => {
+    const r = resultados[i];
+    const est = r ? r.estado : "PENDIENTE";
+    if (filtro && est !== filtro) return;
+    const lat = r && r.lat !== null ? r.lat : (r && r.estado === "SIN_GEO" ? f[m.lat] : "");
+    const lon = r && r.lon !== null ? r.lon : (r && r.estado === "SIN_GEO" ? f[m.lon] : "");
+    const punto = r && r.lat !== null ? `${r.lat},${r.lon}` : r && r.propuesta ? r.propuesta.join(",") : null;
+    const q = punto || [f[m.nombre], m.direccion ? f[m.direccion] : "", f[m.ciudad], "Colombia"].filter(Boolean).join(", ");
+    html += `<tr><td>${i + 1}</td><td>${escapar(f[m.id])}</td><td>${escapar(f[m.nombre])}</td><td>${escapar(f[m.ciudad])}</td>` +
+      `<td>${escapar(m.direccion ? f[m.direccion] : "")}</td><td><span class="chip ${est}">${est}</span></td>` +
+      `<td>${escapar(lat)}</td><td>${escapar(lon)}</td><td>${escapar(r ? r.nombre || r.direccion : "")}</td>` +
+      `<td class="obs">${escapar(r ? r.obs.join(" ") : "")}</td>` +
+      `<td><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}">${punto ? "Ver" : "Buscar"}</a></td></tr>`;
+  });
+  $("#table").innerHTML = html + "</tbody>";
+  pintarMapa();
+}
+$("#filter").addEventListener("change", pintar);
+
+function pintarMapa() {
+  if (typeof L === "undefined") return;
+  if (!mapa) {
+    mapa = L.map("map").setView([4.6, -74.1], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(mapa);
+    capa = L.layerGroup().addTo(mapa);
+  }
+  capa.clearLayers();
+  const m = mapeo(), css = getComputedStyle(document.documentElement);
+  const color = {GEORREFERENCIADO: css.getPropertyValue("--ok"), REVISAR: css.getPropertyValue("--warn")};
+  const puntos = [];
+  resultados.forEach((r, i) => {
+    if (!r) return;
+    const p = r.lat !== null ? [r.lat, r.lon] : r.propuesta;
+    if (!p) return;
+    puntos.push(p);
+    L.circleMarker(p, {radius: 7, color: color[r.estado] || "#888", fillOpacity: r.lat !== null ? .85 : .15, weight: 2})
+      .bindPopup(`<b>${escapar(filas[i][m.nombre])}</b><br>${escapar(r.estado)}${r.lat === null ? " (candidato)" : ""}<br>${escapar(r.nombre || r.direccion)}`)
+      .addTo(capa);
+  });
+  if (puntos.length) mapa.fitBounds(puntos, {padding: [30, 30], maxZoom: 15});
+}
+
+/* ============================== Excel de salida ============================== */
+$("#download").addEventListener("click", descargar);
+function descargar() {
+  const m = mapeo(), actualizar = $("#updateOrig").checked;
+  // Se copia la hoja original celda por celda (tipos y formatos intactos) y se agregan columnas al final
+  const ws = JSON.parse(JSON.stringify(libro.Sheets[hoja]));
+  const rango = XLSX.utils.decode_range(ws["!ref"]);
+  const cabecera = [];
+  for (let c = rango.s.c; c <= rango.e.c; c++) { const celda = ws[XLSX.utils.encode_cell({r: rango.s.r, c})]; cabecera.push(celda ? String(celda.v) : ""); }
+  const colLat = cabecera.indexOf(m.lat) + rango.s.c, colLon = cabecera.indexOf(m.lon) + rango.s.c;
+  const nuevas = ["LATITUD_ORIGINAL", "LONGITUD_ORIGINAL", "NOMBRE_ENCONTRADO", "DIRECCION_ENCONTRADA", "CIUDAD_ENCONTRADA",
+    "LATITUD_VALIDADA", "LONGITUD_VALIDADA", "ESTADO_GEORREFERENCIACION", "FUENTE_COORDENADAS", "PLACE_ID",
+    "TIPO_COINCIDENCIA", "OBSERVACIONES"];
+  const extra = [nuevas];
+  filas.forEach((f, i) => {
+    const r = resultados[i], fila = rango.s.r + 1 + i;
+    if (r && r.estado === "GEORREFERENCIADO" && actualizar) {
+      if (m.lat) ws[XLSX.utils.encode_cell({r: fila, c: colLat})] = {t: "n", v: r.lat, z: "0.0000000"};
+      if (m.lon) ws[XLSX.utils.encode_cell({r: fila, c: colLon})] = {t: "n", v: r.lon, z: "0.0000000"};
+    }
+    extra.push([m.lat ? f[m.lat] : "", m.lon ? f[m.lon] : "", r?.nombre || "", r?.direccion || "", r?.ciudad || "",
+      r && r.lat !== null ? r.lat : (r?.estado === "SIN_GEO" ? f[m.lat] : ""),
+      r && r.lon !== null ? r.lon : (r?.estado === "SIN_GEO" ? f[m.lon] : ""),
+      r ? r.estado : "NO_PROCESADO", r?.fuente || "", r?.id || "", r?.tipo || "", r ? r.obs.join(" ") : ""]);
+  });
+  XLSX.utils.sheet_add_aoa(ws, extra, {origin: {r: rango.s.r, c: rango.e.c + 1}});
+  ws["!cols"] = [...cabecera, ...nuevas].map(k => ({wch: k === "OBSERVACIONES" ? 90 : /DIRECCION|NOMBRE|PDV/.test(k) ? 40 : 16}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (hoja || "Datos").slice(0, 31));
+  const cuenta = k => resultados.filter(r => r && r.estado === k).length;
+  const resumen = [["Indicador", "Valor"],
+    ["Total de puntos de venta", filas.length],
+    ["Coordenadas válidas antes del procesamiento", filas.filter(f => /numéricas/.test(diagnostico(f[m.lat], f[m.lon]))).length],
+    ["Registros georreferenciados", cuenta("GEORREFERENCIADO")], ["Registros pendientes de revisión", cuenta("REVISAR")],
+    ["Registros sin resultados", cuenta("SIN_RESULTADO")], ["Registros 'sin geo' conservados", cuenta("SIN_GEO")],
+    ["Errores de consulta", cuenta("ERROR")], ["Registros no procesados", resultados.filter(r => !r).length],
+    [], ["Fecha", new Date().toLocaleString("es-CO")],
+    ["Servicio", document.querySelector("input[name=prov]:checked").value === "google" ? "Google Places API + Geocoding API" : "OpenStreetMap/Nominatim"],
+    [], ["Registros no georreferenciados y motivo"], ["Código", "PDV", "Ciudad", "Estado", "Observaciones"]];
+  filas.forEach((f, i) => { const r = resultados[i];
+    if (r && r.estado !== "GEORREFERENCIADO") resumen.push([f[m.id], f[m.nombre], f[m.ciudad], r.estado, r.obs.join(" ")]); });
+  const wr = XLSX.utils.aoa_to_sheet(resumen);
+  wr["!cols"] = [{wch: 44}, {wch: 40}, {wch: 16}, {wch: 18}, {wch: 100}];
+  XLSX.utils.book_append_sheet(wb, wr, "Resumen");
+  const base = (nombreArchivoActual || "puntos_de_venta").replace(/\.[^.]+$/, "");
+  XLSX.writeFile(wb, `${base.replace(/\s+/g, "_")}_georreferenciado.xlsx`);
+}
+
+// Para pruebas automatizadas: cargarLibro(arrayBuffer, nombre)
+window.__geo = {cargarLibro, parsearDireccion, normalizada, analizarNombre, compararDireccion, parsearDireccionGoogle, ejecutar, resultados: () => resultados};
+</script>
+</body>
+</html>
