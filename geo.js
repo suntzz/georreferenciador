@@ -248,10 +248,40 @@ function cacheSet(k, v) {
   try { localStorage.setItem("geo:" + k, JSON.stringify(v)); } catch (e) { /* almacenamiento lleno o bloqueado */ }
 }
 const pausa = ms => new Promise(r => setTimeout(r, ms));
+/* ============================== Límite gratis de Google ============================== */
+// Google da un cupo gratis al mes por tipo de consulta (búsqueda de lugares ≈ 5.000, geocodificación ≈ 10.000).
+// Antes de llegar a él, la página deja de usar Google y sigue con OpenStreetMap para que no se generen cobros.
+const LIMITE_GOOGLE = {places: 4500, geocoding: 9000};
+// Uso del mes ya registrado en la consola de Google antes de activar este control
+const USO_INICIAL_GOOGLE = {"2026-10": {places: 1366, geocoding: 419}};
+const mesActual = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+function leerUsoGoogle() {
+  const mes = mesActual();
+  let uso = null;
+  try { uso = JSON.parse(localStorage.getItem(`geo_uso_google_${mes}`)); } catch (e) {}
+  return uso || {...(USO_INICIAL_GOOGLE[mes] || {places: 0, geocoding: 0}), agotado: false};
+}
+function guardarUsoGoogle(uso) { try { localStorage.setItem(`geo_uso_google_${mesActual()}`, JSON.stringify(uso)); } catch (e) {} }
+const tipoGoogle = url => url.includes("places.googleapis.com") ? "places"
+  : url.includes("maps.googleapis.com/maps/api/geocode") ? "geocoding" : null;
+function googleAgotado() {
+  const uso = leerUsoGoogle();
+  return uso.agotado || uso.places >= LIMITE_GOOGLE.places || uso.geocoding >= LIMITE_GOOGLE.geocoding;
+}
+function marcarGoogleAgotado() { const uso = leerUsoGoogle(); uso.agotado = true; guardarUsoGoogle(uso); }
+function errorLimiteGoogle() {
+  const e = new Error("Se alcanzó el límite de uso gratuito de Google de este mes.");
+  e.limiteGoogle = true;
+  return e;
+}
+
 let ultimaConsulta = 0, consultasReales = 0;
 async function solicitar(url, opciones, intervalo, llave) {
   const enCache = cacheGet(llave);
   if (enCache !== undefined) return enCache;
+  // Lo que ya está en caché no cuenta; una consulta nueva a Google solo se hace si no se ha llegado al límite
+  const tipo = tipoGoogle(url);
+  if (tipo && googleAgotado()) throw errorLimiteGoogle();
   let error;
   for (let intento = 1; intento <= 3; intento++) {
     const espera = intervalo - (Date.now() - ultimaConsulta);
@@ -260,23 +290,44 @@ async function solicitar(url, opciones, intervalo, llave) {
     try {
       const r = await fetch(url, opciones);
       consultasReales++;
+      if (tipo) { const uso = leerUsoGoogle(); uso[tipo]++; guardarUsoGoogle(uso); }
+      if (tipo && r.status === 429) {
+        // Google avisa que se acabó la cuota: no se insiste y se pasa a OpenStreetMap
+        const texto = await r.text();
+        if (/RESOURCE_EXHAUSTED|quota|OVER_QUERY_LIMIT/i.test(texto) || intento === 3) { marcarGoogleAgotado(); throw errorLimiteGoogle(); }
+        error = "HTTP 429"; await pausa(2000 * intento); continue;
+      }
       if ([429, 500, 502, 503, 504].includes(r.status)) { error = `HTTP ${r.status}`; await pausa(2000 * intento); continue; }
       const datos = await r.json();
       if (!r.ok) {
         const msg = datos?.error?.message || datos?.error_message || `HTTP ${r.status}`;
+        if (tipo && /quota|billing|RESOURCE_EXHAUSTED/i.test(msg)) { marcarGoogleAgotado(); throw errorLimiteGoogle(); }
         const e = new Error(msg); e.fatal = [400, 401, 403].includes(r.status); throw e;
       }
+      if (datos.status && ["OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT"].includes(datos.status)) { marcarGoogleAgotado(); throw errorLimiteGoogle(); }
       if (datos.status && ["REQUEST_DENIED", "INVALID_REQUEST"].includes(datos.status)) {
         const e = new Error(`${datos.status}: ${datos.error_message || ""}`); e.fatal = datos.status === "REQUEST_DENIED"; throw e;
       }
       cacheSet(llave, datos);
       return datos;
     } catch (e) {
-      if (e.fatal) throw e;
+      if (e.fatal || e.limiteGoogle) throw e;
       error = e.message; await pausa(1000 * intento);
     }
   }
   throw new Error(`Sin respuesta tras 3 intentos (${error})`);
+}
+
+/** Pasa la búsqueda a OpenStreetMap y deja un aviso visible (sin cifras de uso). */
+function pasarAOpenStreetMap() {
+  const osm = document.querySelector("input[name=prov][value=osm]");
+  if (osm && !osm.checked) { osm.checked = true; osm.dispatchEvent(new Event("change", {bubbles: true})); }
+  const aviso = $("#avisoLimite");
+  if (aviso) {
+    aviso.textContent = "Google llegó al límite de uso gratuito de este mes: la búsqueda continúa con OpenStreetMap para no generar cobros. Google vuelve a estar disponible el próximo mes.";
+    aviso.classList.remove("hidden");
+  }
+  return OSM;
 }
 
 /* ============================== Proveedor Google ============================== */
@@ -638,6 +689,9 @@ const mapeo = () => Object.fromEntries(CAMPOS.map(([k]) => [k, $("#map_" + k).va
 const radios = document.querySelectorAll("input[name=prov]");
 radios.forEach(r => r.addEventListener("change", () => $("#keyBox").classList.toggle("hidden", r.value === "osm" && r.checked)));
 try { const k = localStorage.getItem("geo_apikey"); if (k) { $("#apikey").value = k; $("#remember").checked = true; } } catch (e) {}
+// Si este mes ya se llegó al límite gratis de Google, se usa OpenStreetMap aunque se elija Google
+radios.forEach(r => r.addEventListener("change", () => { if (r.value === "google" && r.checked && googleAgotado()) pasarAOpenStreetMap(); }));
+if (googleAgotado() && document.querySelector("input[name=prov]:checked")?.value === "google") pasarAOpenStreetMap();
 
 $("#stop").addEventListener("click", () => { detener = true; $("#stop").disabled = true; });
 $("#run").addEventListener("click", ejecutar);
@@ -646,7 +700,8 @@ async function ejecutar() {
   const m = mapeo();
   if (!m.nombre || !m.ciudad) { estado("Selecciona al menos las columnas de nombre y ciudad.", true); return; }
   const provNombre = document.querySelector("input[name=prov]:checked").value;
-  const prov = provNombre === "google" ? Google : OSM;
+  let prov = provNombre === "google" ? Google : OSM;
+  if (prov === Google && googleAgotado()) prov = pasarAOpenStreetMap();
   if (prov === Google) {
     Google.key = $("#apikey").value.trim();
     if (!Google.key) { estado("Ingresa la API key de Google o elige OpenStreetMap.", true); return; }
@@ -670,6 +725,8 @@ async function ejecutar() {
     } else {
       try { resultados[i] = await georreferenciar(fila, prov); }
       catch (e) {
+        // Límite gratis de Google: se repite este registro con OpenStreetMap y se sigue con él
+        if (e.limiteGoogle && prov === Google) { prov = pasarAOpenStreetMap(); i--; continue; }
         resultados[i] = {estado: "ERROR", tipo: "", nombre: "", direccion: "", ciudad: "", lat: null, lon: null, fuente: prov.nombre, id: "",
           obs: [`Falló la consulta: ${e.message}`]};
         if (e.fatal) { estado(`El servicio rechazó la consulta: ${e.message}. Revisa la API key y que estén habilitadas Places API (New) y Geocoding API.`, true); break; }
@@ -825,7 +882,8 @@ mostrarHerramienta($("#herramienta").value);
 
 /** Prepara el proveedor elegido (Google con su clave, u OSM). Devuelve null si falta la clave. */
 function prepararProveedor(avisar) {
-  const prov = document.querySelector("input[name=prov]:checked").value === "google" ? Google : OSM;
+  let prov = document.querySelector("input[name=prov]:checked").value === "google" ? Google : OSM;
+  if (prov === Google && googleAgotado()) prov = pasarAOpenStreetMap();
   if (prov === Google) {
     Google.key = $("#apikey").value.trim();
     if (!Google.key) { avisar("Ingresa la API key de Google arriba, en «Servicio de búsqueda», o elige OpenStreetMap.", true); return null; }
@@ -1143,7 +1201,7 @@ function actualizarEstimado() {
   let txt = `${n.toLocaleString("es-CO")} puntos de venta a procesar.`;
   if (usaMapa && google) {
     txt += ` Con Google son unas ${(n * 7).toLocaleString("es-CO")} consultas.`;
-    if (n * 4 > 5000) txt += " Supera el cupo gratis mensual (unas 5.000 búsquedas de lugares): usa el modo prueba, filtra por evento o procesa por partes.";
+    if (n * 4 > 5000) txt += " Es más que el uso gratuito de un mes: si se llega al límite, la búsqueda continúa sola con OpenStreetMap.";
   } else if (usaMapa) {
     const min = Math.max(1, Math.round(n * 6 / 60));
     txt += min >= 120 ? ` Con OpenStreetMap tarda unas ${Math.round(min / 60)} horas.` : ` Con OpenStreetMap tarda ${min === 1 ? "cerca de 1 minuto" : `unos ${min} minutos`}.`;
@@ -1235,7 +1293,7 @@ function evaluarComparacion(p, g, rs, enc, centro, tol, usarMapa) {
 async function validarPdvs() {
   if (!V.pdvs.length) { estadoV("No hay puntos de venta con los filtros elegidos.", true); return; }
   const usarMapa = true;   // la referencia es siempre el local encontrado en el mapa
-  const prov = usarMapa ? prepararProveedor(estadoV) : null;
+  let prov = usarMapa ? prepararProveedor(estadoV) : null;
   if (usarMapa && !prov) return;
   const tol = Math.max(10, parseFloat(String($("#tolerancia").value).replace(",", ".")) || 150);
   const mb = mapeoV(CAMPOS_BASE, "b_");
@@ -1261,6 +1319,8 @@ async function validarPdvs() {
       V.res.set(p.sap, {g, ...evaluarComparacion({...p, ...datos}, g, rs, enc, centro, tol, usarMapa)});
       V.final.set(p.sap, decisionPorDefecto(V.res.get(p.sap)));
     } catch (e) {
+      // Límite gratis de Google: se repite este PDV con OpenStreetMap y se sigue con él
+      if (e.limiteGoogle && prov === Google) { prov = pasarAOpenStreetMap(); i--; continue; }
       V.res.set(p.sap, {g, rs, clase: "NO_VERIFICABLE", motivo: `Falló la consulta: ${e.message}`, ubic: "ERROR", punto: null,
         dist: null, distMapa: null, distRutero: null, pctDentro: null, direccionMapa: "", error: true});
       // Si falló la consulta no se borra la geo que ya tenía la base

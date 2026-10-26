@@ -310,3 +310,15 @@ button.download-link {
         justify-content: center;
     }
 }
+
+/* Aviso cuando Google llega al límite gratis y se sigue con OpenStreetMap */
+.geo .aviso-limite {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border: 1px solid var(--warn);
+    border-radius: 10px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    font-size: 13px;
+    font-weight: 600;
+}

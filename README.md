@@ -73,6 +73,14 @@ Cada usuario pega su clave en la página; no se guarda en el repositorio. Restri
 - **Sitios web:** `https://suntzz.github.io/*` (y `http://localhost:*/*` para probar en tu equipo)
 - **APIs:** Places API (New) y Geocoding API
 
+#### Límite para no generar cobros
+
+La página cuenta las consultas nuevas que hace a Google en el mes; lo que ya está en caché no cuenta. Antes de llegar al cupo gratis, se pasa sola a **OpenStreetMap** y muestra un aviso. No muestra cuánto falta. El corte es a las 4.500 búsquedas de lugares (de unas 5.000 gratis) y a las 9.000 geocodificaciones (de unas 10.000). También pasa a OpenStreetMap si Google responde que se agotó la cuota.
+
+- El contador se reinicia cada mes, igual que el cupo de Google.
+- Octubre de 2026 arranca con el uso que ya mostraba la consola de Google (`USO_INICIAL_GOOGLE` en `geo.js`).
+- El conteo es **por navegador**: no ve las consultas hechas desde otros equipos ni desde scripts. Si varias personas usan la misma clave, pon además un límite diario en Google Cloud → Google Maps Platform → Cuotas.
+
 ### Archivos
 
 | Archivo | Contenido |
