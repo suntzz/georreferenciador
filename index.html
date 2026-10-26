@@ -38,10 +38,28 @@ header p{margin:0;color:var(--muted);max-width:760px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-top:18px}
 .panel h2{font-size:16px;margin:0 0 12px}
 .step{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);align-items:center;justify-content:center;font-size:13px;font-weight:600;margin-right:8px}
-#drop{border:2px dashed var(--line);border-radius:var(--radius);padding:36px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg)}
-#drop:hover,#drop.over{border-color:var(--accent);background:var(--soft)}
-#drop strong{font-size:17px;display:block;margin-bottom:4px}
-#drop span{color:var(--muted)}
+#drop,.drop{border:2px dashed var(--line);border-radius:var(--radius);padding:36px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg)}
+#drop:hover,#drop.over,.drop:hover,.drop.over{border-color:var(--accent);background:var(--soft)}
+#drop strong,.drop strong{font-size:17px;display:block;margin-bottom:4px}
+#drop span,.drop span{color:var(--muted)}
+.drop.cargado{border-style:solid;border-color:var(--ok);background:var(--ok-bg)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.tabs{display:flex;gap:4px;margin-top:22px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 14px;color:var(--muted);font-weight:600;white-space:nowrap}
+.tab.active{color:var(--text);border-bottom-color:var(--accent)}
+.checklist{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.checklist label{display:flex;gap:8px;align-items:center;color:var(--text);font-size:14px;margin:4px 0}
+.checklist label small{margin-left:auto;color:var(--muted)}
+button.mini{padding:3px 10px;font-size:13px}
+input[type=date]{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font:inherit}
+.progress{height:8px;background:var(--gray-bg);border-radius:4px;overflow:hidden;margin-top:14px}
+.progress div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.status{margin-top:8px;color:var(--muted);font-size:14px;min-height:1.5em}
+.mapa{height:440px;border-radius:10px;border:1px solid var(--line);margin-top:14px}
+.CORRESPONDE{background:var(--ok-bg);color:var(--ok)}
+.REVISAR_V{background:var(--warn-bg);color:var(--warn)}
+.NO_CORRESPONDE,.GEO_INVALIDA{background:var(--bad-bg);color:var(--bad)}
+.SIN_GEO_BASE,.NO_VERIFICABLE{background:var(--gray-bg);color:var(--gray)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
 select,input[type=text],input[type=password]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font:inherit}
@@ -82,9 +100,33 @@ footer{margin-top:28px;color:var(--muted);font-size:13px}
 <main>
 <header>
   <h1>Georreferenciador de puntos de venta</h1>
-  <p>Arrastra tu Excel. La página identifica las columnas, busca cada establecimiento y valida la ubicación con la dirección y la ciudad. Al final puedes descargar el Excel con las coordenadas. Todo ocurre en tu navegador: el archivo no se sube a ningún servidor.</p>
+  <p>Arrastra tus Excel y la página encuentra cada establecimiento en el mapa. Puedes <b>georreferenciar un archivo</b> o <b>validar un rutero contra la base de PDV</b>: filtrar fechas y eventos, revisar qué puntos tienen geo y comprobar si esa geo corresponde al local. Todo ocurre en tu navegador: los archivos no se suben a ningún servidor.</p>
 </header>
 
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tool="tool1" role="tab">Georreferenciar un archivo</button>
+  <button class="tab" data-tool="tool2" role="tab">Validar rutero vs. base de PDV</button>
+</nav>
+
+<section class="panel">
+  <h2>Servicio de búsqueda</h2>
+  <div class="row">
+    <label class="opt"><input type="radio" name="prov" value="google" checked>
+      <div><b>Google Maps</b> (recomendado)<small>Mejor cobertura de comercios en Colombia. Requiere una API key con Places API (New) y Geocoding API habilitadas; puede generar costos.</small></div></label>
+    <label class="opt"><input type="radio" name="prov" value="osm">
+      <div><b>OpenStreetMap</b> (gratis)<small>Más lento (1 consulta por segundo) y con menos establecimientos registrados.</small></div></label>
+  </div>
+  <div id="keyBox" style="margin-top:12px">
+    <label for="apikey">API key de Google</label>
+    <input type="password" id="apikey" placeholder="AIza..." autocomplete="off">
+    <div class="row" style="margin-top:6px">
+      <label class="check"><input type="checkbox" id="remember"> Recordarla en este navegador</label>
+    </div>
+    <p class="hint">La clave solo se usa desde tu navegador para consultar a Google. Restríngela en Google Cloud a tu dominio (por ejemplo, <code>https://tu-usuario.github.io/*</code>).</p>
+  </div>
+</section>
+
+<div id="tool1">
 <section class="panel">
   <h2><span class="step">1</span>Archivo</h2>
   <div id="drop" tabindex="0" role="button" aria-label="Seleccionar archivo">
@@ -102,22 +144,8 @@ footer{margin-top:28px;color:var(--muted);font-size:13px}
 </section>
 
 <section class="panel hidden" id="prov">
-  <h2><span class="step">3</span>Servicio de búsqueda</h2>
+  <h2><span class="step">3</span>Buscar las ubicaciones</h2>
   <div class="row">
-    <label class="opt"><input type="radio" name="prov" value="google" checked>
-      <div><b>Google Maps</b> (recomendado)<small>Mejor cobertura de comercios en Colombia. Requiere una API key con Places API (New) y Geocoding API habilitadas; puede generar costos.</small></div></label>
-    <label class="opt"><input type="radio" name="prov" value="osm">
-      <div><b>OpenStreetMap</b> (gratis)<small>Más lento (1 consulta por segundo) y con menos establecimientos registrados.</small></div></label>
-  </div>
-  <div id="keyBox" style="margin-top:12px">
-    <label for="apikey">API key de Google</label>
-    <input type="password" id="apikey" placeholder="AIza..." autocomplete="off">
-    <div class="row" style="margin-top:6px">
-      <label class="check"><input type="checkbox" id="remember"> Recordarla en este navegador</label>
-    </div>
-    <p class="hint">La clave solo se usa desde tu navegador para consultar a Google. Restríngela en Google Cloud a tu dominio (por ejemplo, <code>https://tu-usuario.github.io/*</code>).</p>
-  </div>
-  <div class="row" style="margin-top:14px">
     <label class="check"><input type="checkbox" id="testMode"> Modo prueba: procesar solo los primeros 5 registros</label>
   </div>
   <div class="row" style="margin-top:14px">
@@ -147,6 +175,91 @@ footer{margin-top:28px;color:var(--muted);font-size:13px}
   </div>
   <div class="table-wrap"><table id="table"></table></div>
 </section>
+</div>
+
+<div id="tool2" class="hidden">
+<section class="panel">
+  <h2><span class="step">1</span>Archivos</h2>
+  <div class="grid2">
+    <div>
+      <div class="drop" id="dropRutero" tabindex="0" role="button" aria-label="Seleccionar rutero">
+        <strong>Rutero (visitas)</strong><span>Arrastra el Excel del rutero o haz clic</span>
+      </div>
+      <input type="file" id="fileRutero" accept=".xlsx,.xls,.csv" class="hidden">
+      <p class="hint" id="infoRutero"></p>
+    </div>
+    <div>
+      <div class="drop" id="dropBase" tabindex="0" role="button" aria-label="Seleccionar base de PDV">
+        <strong>Base de puntos de venta</strong><span>Arrastra el Excel con la geo de los PDV o haz clic</span>
+      </div>
+      <input type="file" id="fileBase" accept=".xlsx,.xls,.csv" class="hidden">
+      <p class="hint" id="infoBase"></p>
+    </div>
+  </div>
+</section>
+
+<section class="panel hidden" id="vCols">
+  <h2><span class="step">2</span>Columnas detectadas</h2>
+  <p class="hint" style="margin:0 0 8px">Rutero</p>
+  <div class="grid" id="mapRutero"></div>
+  <p class="hint" style="margin:14px 0 8px">Base de puntos de venta</p>
+  <div class="grid" id="mapBase"></div>
+</section>
+
+<section class="panel hidden" id="vFiltros">
+  <h2><span class="step">3</span>Filtros del rutero</h2>
+  <div class="grid">
+    <div><label for="fDesde">Fecha de visita desde</label><input type="date" id="fDesde"></div>
+    <div><label for="fHasta">Fecha de visita hasta (opcional)</label><input type="date" id="fHasta"></div>
+  </div>
+  <p class="hint" id="rangoFechas"></p>
+  <div class="grid2" style="margin-top:14px">
+    <div>
+      <div class="row" style="justify-content:space-between"><b>Eventos</b>
+        <span class="row" style="gap:6px"><button class="mini" data-todos="evento">Todos</button><button class="mini" data-ninguno="evento">Ninguno</button></span></div>
+      <input type="text" id="buscarEvento" placeholder="Buscar evento..." style="margin:8px 0">
+      <div class="checklist" id="listaEvento"></div>
+    </div>
+    <div>
+      <div class="row" style="justify-content:space-between"><b>Estado de la visita</b>
+        <span class="row" style="gap:6px"><button class="mini" data-todos="estado">Todos</button><button class="mini" data-ninguno="estado">Ninguno</button></span></div>
+      <div class="checklist" id="listaEstado" style="margin-top:8px"></div>
+    </div>
+  </div>
+  <div class="cards" id="vConteo" style="margin-top:14px"></div>
+  <p class="hint">Se eliminan como duplicadas las visitas con el mismo código, fecha y evento. Luego se toma cada punto de venta una sola vez.</p>
+</section>
+
+<section class="panel hidden" id="vRun">
+  <h2><span class="step">4</span>Validar la geo</h2>
+  <div class="row">
+    <div style="min-width:200px"><label for="tolerancia">Tolerancia para "corresponde" (metros)</label><input type="text" id="tolerancia" value="150" inputmode="numeric"></div>
+    <label class="check"><input type="checkbox" id="vOmitirOk"> No buscar los que ya tienen GEO_OK en la base</label>
+    <label class="check"><input type="checkbox" id="vPrueba"> Modo prueba: solo 5 puntos de venta</label>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <button class="primary" id="vRunBtn">Validar puntos de venta</button>
+    <button id="vStop" disabled>Detener</button>
+  </div>
+  <div class="progress" id="vProgress"><div></div></div>
+  <div class="status" id="vStatus"></div>
+</section>
+
+<section class="panel hidden" id="vResults">
+  <h2><span class="step">5</span>Resultado de la validación</h2>
+  <div class="cards" id="vCards"></div>
+  <div id="vMap" class="mapa"></div>
+  <p class="hint">Azul: geo de la base · Verde: ubicación encontrada en el mapa · La línea une ambas cuando no coinciden.</p>
+  <div class="row" style="margin-top:14px;justify-content:space-between">
+    <div class="row">
+      <label for="vFilter" style="margin:0">Mostrar</label>
+      <select id="vFilter" style="width:auto"><option value="">Todos</option></select>
+    </div>
+    <button class="primary" id="vDownload">Descargar Excel</button>
+  </div>
+  <div class="table-wrap"><table id="vTable"></table></div>
+</section>
+</div>
 
 <footer>
   Estados: <b>GEORREFERENCIADO</b>, sede identificada con evidencia; <b>REVISAR</b>, varias coincidencias, una discrepancia o una ubicación aproximada; <b>SIN_RESULTADO</b>, sin coincidencia confiable; <b>SIN_GEO</b>, el registro viene marcado "sin geo" y se conserva igual; <b>ERROR</b>, falló el servicio.
@@ -956,8 +1069,371 @@ function descargar() {
   XLSX.writeFile(wb, `${base}_georreferenciado_detalle.xlsx`);
 }
 
+/* ============================== Pestañas ============================== */
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+  ["tool1", "tool2"].forEach(id => $("#" + id).classList.toggle("hidden", id !== t.dataset.tool));
+  setTimeout(() => { mapa?.invalidateSize(); V.mapa?.invalidateSize(); }, 50);
+}));
+
+/** Prepara el proveedor elegido (Google con su clave, u OSM). Devuelve null si falta la clave. */
+function prepararProveedor(avisar) {
+  const prov = document.querySelector("input[name=prov]:checked").value === "google" ? Google : OSM;
+  if (prov === Google) {
+    Google.key = $("#apikey").value.trim();
+    if (!Google.key) { avisar("Ingresa la API key de Google arriba, en «Servicio de búsqueda», o elige OpenStreetMap.", true); return null; }
+    try { $("#remember").checked ? localStorage.setItem("geo_apikey", Google.key) : localStorage.removeItem("geo_apikey"); } catch (e) {}
+  }
+  return prov;
+}
+
+/* ============================== Validar rutero vs. base de PDV ============================== */
+// Columnas por campo, en orden de preferencia (se comparan sin espacios, tildes ni mayúsculas)
+const CAMPOS_RUTERO = [
+  ["sap", "Código (SAP)", ["sap", "codigopdv", "codigo", "cod", "nit"]],
+  ["nombre", "Nombre del PDV", ["pdv", "nombrepdv", "nombre", "establecimiento", "puntodeventa", "tienda"]],
+  ["ciudad", "Ciudad", ["ciudad", "municipio"]],
+  ["direccion", "Dirección", ["direccion", "dir"]],
+  ["fecha", "Fecha de visita", ["fechavisita", "fechadevisita", "fecha", "fech", "dia"]],
+  ["evento", "Evento", ["evento", "campana", "actividad"]],
+  ["estado", "Estado de la visita", ["estado", "estadovisita", "estadodelavisita"]],
+];
+const CAMPOS_BASE = [
+  ["sap", "Código (SAP)", ["sap", "codigopdv", "codigo", "cod", "nit"]],
+  ["nombre", "Nombre del PDV", ["pdv", "nombrepdv", "nombre", "establecimiento", "puntodeventa", "tienda"]],
+  ["ciudad", "Ciudad", ["ciudad", "municipio"]],
+  ["direccion", "Dirección", ["direccion", "dir"]],
+  ["lat", "Latitud", ["latitud", "lat", "latitude"]],
+  ["lon", "Longitud", ["longitud", "longiutd", "lon", "lng", "long", "longitude"]],
+  ["geook", "Geo validada (opcional)", ["geook", "geovalidada", "validado"]],
+];
+const ETIQUETA_V = {CORRESPONDE: "CORRESPONDE", REVISAR_V: "REVISAR", NO_CORRESPONDE: "NO CORRESPONDE",
+  GEO_INVALIDA: "GEO INVÁLIDA EN BASE", SIN_GEO_BASE: "SIN GEO EN BASE", NO_VERIFICABLE: "NO VERIFICABLE", NO_PROCESADO: "NO PROCESADO"};
+const V = {rutero: null, base: null, pdvs: [], visitas: [], baseIdx: new Map(), res: new Map(), detener: false,
+  mapa: null, capa: null, sel: {evento: null, estado: null}};
+const estadoV = (txt, error = false) => { const s = $("#vStatus"); s.textContent = txt; s.classList.toggle("err", error); };
+const normSap = v => String(v ?? "").trim().replace(/\.0+$/, "");
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/** Fecha de visita como 'AAAA-MM-DD' desde texto ISO, dd/mm/aaaa o número de serie de Excel. */
+function aFecha(v) {
+  if (v instanceof Date) return ymd(v);
+  if (typeof v === "number" && v > 20000 && v < 80000) { const d = XLSX.SSF.parse_date_code(v); return `${d.y}-${pad(d.m)}-${pad(d.d)}`; }
+  const s = String(v ?? "").trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/.exec(s);
+  return m ? `${m[3]}-${pad(m[2])}-${pad(m[1])}` : null;
+}
+const fmtFecha = f => f ? f.split("-").reverse().join("/") : "";
+
+function detectarColumna(columnas, alternativas) {
+  for (const alt of alternativas) { const c = columnas.find(c => clave(c) === alt); if (c) return c; }
+  return "";
+}
+function pintarMapeoV(cont, campos, columnas, prefijo) {
+  $(cont).innerHTML = campos.map(([k, etiqueta, alt]) => {
+    const det = detectarColumna(columnas, alt);
+    return `<div><label for="${prefijo}${k}">${etiqueta}</label><select id="${prefijo}${k}"><option value="">(no usar)</option>` +
+      columnas.map(c => `<option${c === det ? " selected" : ""}>${escapar(c)}</option>`).join("") + "</select></div>";
+  }).join("");
+  $(cont).querySelectorAll("select").forEach(s => s.addEventListener("change", () => { if (prefijo === "r_") construirListas(); recalcularV(); }));
+}
+const mapeoV = (campos, prefijo) => Object.fromEntries(campos.map(([k]) => [k, $("#" + prefijo + k)?.value || ""]));
+
+function prepararDrop(drop, input, alCargar) {
+  drop.addEventListener("click", () => input.click());
+  drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") input.click(); });
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) f.arrayBuffer().then(b => alCargar(b, f.name)); });
+  input.addEventListener("change", () => { const f = input.files[0]; if (f) f.arrayBuffer().then(b => alCargar(b, f.name)); });
+}
+function leerTabla(buf, nombre) {
+  const wb = XLSX.read(buf, {type: "array"});
+  const hoja = wb.SheetNames[0];
+  const filas = XLSX.utils.sheet_to_json(wb.Sheets[hoja], {defval: "", raw: true});
+  return {nombre, hoja, filas, columnas: filas.length ? Object.keys(filas[0]) : []};
+}
+function cargarRutero(buf, nombre) {
+  V.rutero = leerTabla(buf, nombre);
+  $("#dropRutero").classList.add("cargado");
+  $("#infoRutero").innerHTML = `<b>${escapar(nombre)}</b> · ${V.rutero.filas.length.toLocaleString("es-CO")} visitas · hoja ${escapar(V.rutero.hoja)}`;
+  pintarMapeoV("#mapRutero", CAMPOS_RUTERO, V.rutero.columnas, "r_");
+  if (!$("#fDesde").value) { const m = new Date(); m.setDate(m.getDate() + 1); $("#fDesde").value = ymd(m); }
+  V.sel = {evento: null, estado: null};
+  construirListas();
+  mostrarPanelesV();
+}
+function cargarBase(buf, nombre) {
+  V.base = leerTabla(buf, nombre);
+  $("#dropBase").classList.add("cargado");
+  $("#infoBase").innerHTML = `<b>${escapar(nombre)}</b> · ${V.base.filas.length.toLocaleString("es-CO")} puntos de venta · hoja ${escapar(V.base.hoja)}`;
+  pintarMapeoV("#mapBase", CAMPOS_BASE, V.base.columnas, "b_");
+  mostrarPanelesV();
+}
+function mostrarPanelesV() {
+  $("#vCols").classList.remove("hidden");
+  if (V.rutero) $("#vFiltros").classList.remove("hidden");
+  if (V.rutero && V.base) $("#vRun").classList.remove("hidden");
+  recalcularV();
+}
+prepararDrop($("#dropRutero"), $("#fileRutero"), cargarRutero);
+prepararDrop($("#dropBase"), $("#fileBase"), cargarBase);
+
+/** Listas de eventos y estados con su número de visitas (se conserva lo que el usuario haya marcado). */
+function construirListas() {
+  if (!V.rutero) return;
+  const m = mapeoV(CAMPOS_RUTERO, "r_");
+  for (const campo of ["evento", "estado"]) {
+    const cont = $(campo === "evento" ? "#listaEvento" : "#listaEstado");
+    if (!m[campo]) { cont.innerHTML = `<p class="hint">Sin columna de ${campo}.</p>`; V.sel[campo] = null; continue; }
+    const cuenta = new Map();
+    V.rutero.filas.forEach(f => { const v = String(f[m[campo]] ?? "").trim() || "(vacío)"; cuenta.set(v, (cuenta.get(v) || 0) + 1); });
+    const valores = [...cuenta.entries()].sort((a, b) => b[1] - a[1]);
+    if (!V.sel[campo]) V.sel[campo] = new Set(valores.map(v => v[0]));
+    cont.innerHTML = valores.map(([v, n]) => `<label data-valor="${escapar(v)}"><input type="checkbox" value="${escapar(v)}"${V.sel[campo].has(v) ? " checked" : ""}>` +
+      `${escapar(v)}<small>${n.toLocaleString("es-CO")}</small></label>`).join("");
+    cont.querySelectorAll("input").forEach(i => i.addEventListener("change", () => {
+      i.checked ? V.sel[campo].add(i.value) : V.sel[campo].delete(i.value); recalcularV(); }));
+  }
+}
+$("#buscarEvento").addEventListener("input", e => {
+  const q = clave(e.target.value);
+  $("#listaEvento").querySelectorAll("label").forEach(l => l.style.display = !q || clave(l.dataset.valor).includes(q) ? "" : "none");
+});
+document.querySelectorAll("[data-todos],[data-ninguno]").forEach(b => b.addEventListener("click", () => {
+  const campo = b.dataset.todos || b.dataset.ninguno, marcar = !!b.dataset.todos;
+  const cont = $(campo === "evento" ? "#listaEvento" : "#listaEstado");
+  cont.querySelectorAll("label").forEach(l => {
+    if (l.style.display === "none") return;      // respeta el buscador
+    const i = l.querySelector("input"); i.checked = marcar; marcar ? V.sel[campo].add(i.value) : V.sel[campo].delete(i.value);
+  });
+  recalcularV();
+}));
+["#fDesde", "#fHasta"].forEach(s => $(s).addEventListener("change", recalcularV));
+
+/** Geo de la base para un SAP: SI (válida), NO (vacía / "sin geo") o INVALIDA. */
+function geoBase(filasBase, mb) {
+  if (!filasBase || !filasBase.length) return {estado: "NO_EN_BASE", texto: ""};
+  let primera = null;
+  for (const f of filasBase) {
+    const tLat = String(f[mb.lat] ?? "").trim(), tLon = String(f[mb.lon] ?? "").trim();
+    const g = {fila: f, textoLat: tLat, textoLon: tLon, geoOk: mb.geook ? String(f[mb.geook] ?? "").trim() : ""};
+    if (!tLat || !tLon || /sin\s*geo/i.test(tLat + tLon)) Object.assign(g, {estado: "NO"});
+    else {
+      const lat = parseFloat(tLat.replace(",", ".")), lon = parseFloat(tLon.replace(",", "."));
+      Object.assign(g, !isNaN(lat) && !isNaN(lon) && enColombia(lat, lon) && !(Number.isInteger(lat) && Number.isInteger(lon))
+        ? {estado: "SI", lat, lon} : {estado: "INVALIDA"});
+    }
+    if (g.estado === "SI") return {...g, duplicado: filasBase.length > 1};
+    primera = primera || g;
+  }
+  return {...primera, duplicado: filasBase.length > 1};
+}
+
+function recalcularV() {
+  if (!V.rutero) return;
+  const m = mapeoV(CAMPOS_RUTERO, "r_"), mb = V.base ? mapeoV(CAMPOS_BASE, "b_") : null;
+  const desde = $("#fDesde").value, hasta = $("#fHasta").value;
+  const fechas = V.rutero.filas.map(f => aFecha(f[m.fecha])).filter(Boolean).sort();
+  $("#rangoFechas").textContent = fechas.length ? `El rutero tiene visitas del ${fmtFecha(fechas[0])} al ${fmtFecha(fechas[fechas.length - 1])}.` +
+    (m.fecha ? "" : " Selecciona la columna de fecha.") : "No se reconocieron fechas en la columna elegida.";
+  let enRango = 0, duplicadas = 0;
+  const vistos = new Set(), visitas = [], pdvs = new Map();
+  for (const f of V.rutero.filas) {
+    const fecha = aFecha(f[m.fecha]);
+    if (m.fecha && (!fecha || (desde && fecha < desde) || (hasta && fecha > hasta))) continue;
+    const ev = String(f[m.evento] ?? "").trim() || "(vacío)", es = String(f[m.estado] ?? "").trim() || "(vacío)";
+    if (m.evento && V.sel.evento && !V.sel.evento.has(ev)) continue;
+    if (m.estado && V.sel.estado && !V.sel.estado.has(es)) continue;
+    enRango++;
+    const sap = normSap(f[m.sap]);
+    const k = `${sap}|${fecha}|${clave(ev)}`;
+    if (vistos.has(k)) { duplicadas++; continue; }
+    vistos.add(k);
+    visitas.push(f);
+    if (!sap) continue;
+    const p = pdvs.get(sap) || {sap, nombre: f[m.nombre], ciudad: f[m.ciudad], direccion: f[m.direccion], eventos: new Set(), visitas: 0, primera: fecha, ultima: fecha};
+    p.eventos.add(ev); p.visitas++;
+    if (fecha && (!p.primera || fecha < p.primera)) p.primera = fecha;
+    if (fecha && (!p.ultima || fecha > p.ultima)) p.ultima = fecha;
+    pdvs.set(sap, p);
+  }
+  V.visitas = visitas;
+  V.pdvs = [...pdvs.values()];
+  V.baseIdx = new Map();
+  if (V.base && mb.sap) V.base.filas.forEach(f => { const s = normSap(f[mb.sap]); if (s) V.baseIdx.set(s, [...(V.baseIdx.get(s) || []), f]); });
+  const geos = V.base ? V.pdvs.map(p => geoBase(V.baseIdx.get(p.sap), mb)) : [];
+  const c = e => geos.filter(g => g.estado === e).length;
+  $("#vConteo").innerHTML = [
+    ["Visitas con los filtros", enRango], ["Duplicadas eliminadas", duplicadas], ["Puntos de venta únicos", V.pdvs.length],
+    ...(V.base ? [["Con geo en la base", c("SI")], ["Sin geo en la base", c("NO")], ["Geo inválida en la base", c("INVALIDA")], ["No están en la base", c("NO_EN_BASE")]] : []),
+  ].map(([t, v]) => `<div class="card"><b>${v.toLocaleString("es-CO")}</b><span>${t}</span></div>`).join("");
+}
+
+/** Compara la geo de la base con la ubicación encontrada en el mapa. */
+function evaluarValidacion(p, g, enc, centro, tol) {
+  const punto = enc && enc !== "OMITIDO" ? puntoDe(enc) : null;
+  const o = {punto, ubic: enc === "OMITIDO" ? "NO BUSCADA" : ubicacionDe(enc), dist: null, dCentro: null, clase: "", motivo: "",
+    direccionMapa: enc && enc !== "OMITIDO" && enc.estado !== "SIN_GEO" ? String(enc.direccion || "").toUpperCase() : ""};
+  if (g.estado === "SI" && punto) o.dist = distancia(g.lat, g.lon, punto[0], punto[1]);
+  if (g.estado === "SI" && centro) o.dCentro = distancia(g.lat, g.lon, centro.lat, centro.lon);
+  const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+  if (g.estado === "NO_EN_BASE") { o.clase = "SIN_GEO_BASE"; o.motivo = "El punto de venta no está en la base." + (punto ? " Se sugiere la ubicación del mapa." : ""); }
+  else if (g.estado === "INVALIDA") { o.clase = "GEO_INVALIDA"; o.motivo = `La geo de la base (${g.textoLat}, ${g.textoLon}) no es una coordenada válida en Colombia.` + (punto ? " Se sugiere la ubicación del mapa." : ""); }
+  else if (g.estado === "NO") { o.clase = "SIN_GEO_BASE"; o.motivo = punto ? "La base no tiene geo; se sugiere la ubicación del mapa." : "La base no tiene geo y no se encontró el local en el mapa."; }
+  else if (o.dCentro !== null && o.dCentro > 30000 && (!punto || o.dist > 5000)) {
+    o.clase = "NO_CORRESPONDE"; o.motivo = `La geo de la base está a ${m(o.dCentro)} del centro de ${titulo(p.ciudad)}: no es la ciudad del local.`; }
+  else if (enc === "OMITIDO") { o.clase = "NO_VERIFICABLE"; o.motivo = "Tiene GEO_OK en la base y se omitió la búsqueda."; }
+  else if (!punto) { o.clase = "NO_VERIFICABLE"; o.motivo = "No se encontró el local en el mapa para comparar."; }
+  else if (o.dist <= tol) { o.clase = "CORRESPONDE"; o.motivo = `La geo de la base está a ${m(o.dist)} del local` + (o.ubic === "VERIFICADA" ? "." : " (ubicación del mapa por confirmar)."); }
+  else if (o.dist <= 1000 || o.ubic !== "VERIFICADA") { o.clase = "REVISAR_V"; o.motivo = `Diferencia de ${m(o.dist)} con el local` + (o.ubic !== "VERIFICADA" ? "; la ubicación del mapa también está por confirmar." : "."); }
+  else { o.clase = "NO_CORRESPONDE"; o.motivo = `La geo de la base está a ${m(o.dist)} del local encontrado.`; }
+  if (g.duplicado) o.motivo += " El código aparece repetido en la base.";
+  if (g.estado === "SI") {
+    const dec = t => (String(t).split(/[.,]/)[1] || "");
+    if (dec(g.textoLat).length < 4 || dec(g.textoLon).length < 4) o.motivo += " La geo de la base tiene poca precisión (menos de 4 decimales).";
+    else if (/(\d)\1{5,}/.test(dec(g.textoLat) + "|" + dec(g.textoLon))) o.motivo += " La geo de la base parece un valor aproximado (dígitos repetidos).";
+  }
+  return o;
+}
+
+$("#vStop").addEventListener("click", () => { V.detener = true; $("#vStop").disabled = true; });
+$("#vRunBtn").addEventListener("click", validarPdvs);
+async function validarPdvs() {
+  if (!V.pdvs.length) { estadoV("No hay puntos de venta con los filtros elegidos.", true); return; }
+  const prov = prepararProveedor(estadoV);
+  if (!prov) return;
+  const tol = Math.max(10, parseFloat(String($("#tolerancia").value).replace(",", ".")) || 150);
+  const mb = mapeoV(CAMPOS_BASE, "b_");
+  const lista = $("#vPrueba").checked ? V.pdvs.slice(0, 5) : V.pdvs;
+  const omitirOk = $("#vOmitirOk").checked;
+  V.detener = false; consultasReales = 0; V.res = new Map(); V.tol = tol;
+  $("#vRunBtn").disabled = true; $("#vStop").disabled = false; $("#vResults").classList.remove("hidden");
+  estadoV("");
+  for (let i = 0; i < lista.length && !V.detener; i++) {
+    const p = lista[i];
+    const g = geoBase(V.baseIdx.get(p.sap), mb);
+    const fb = g.fila || {};
+    const datos = {id: p.sap, nombre: (mb.nombre && fb[mb.nombre]) || p.nombre, ciudad: (mb.ciudad && fb[mb.ciudad]) || p.ciudad,
+      direccion: (mb.direccion && fb[mb.direccion]) || p.direccion, lat: "", lon: ""};
+    $("#vProgress div").style.width = `${(i / lista.length) * 100}%`;
+    estadoV(`Validando ${i + 1} de ${lista.length}: ${datos.nombre}`);
+    let enc;
+    try {
+      enc = omitirOk && g.estado === "SI" && /^ok$/i.test(g.geoOk) ? "OMITIDO" : await georreferenciar(datos, prov);
+      const centro = datos.ciudad ? await centroCiudad(prov, codigoMunicipio(datos.ciudad)) : null;
+      V.res.set(p.sap, {g, ...evaluarValidacion({...p, ...datos}, g, enc, centro, tol)});
+    } catch (e) {
+      V.res.set(p.sap, {g, clase: "NO_VERIFICABLE", motivo: `Falló la consulta: ${e.message}`, ubic: "ERROR", punto: null, dist: null, direccionMapa: ""});
+      if (e.fatal) { estadoV(`El servicio rechazó la consulta: ${e.message}. Revisa la API key y que estén habilitadas Places API (New) y Geocoding API.`, true); break; }
+    }
+    if (i % 3 === 0 || i === lista.length - 1) pintarV();
+  }
+  $("#vProgress div").style.width = "100%";
+  $("#vRunBtn").disabled = false; $("#vStop").disabled = true;
+  if (!$("#vStatus").classList.contains("err"))
+    estadoV(`Listo: ${V.res.size} de ${V.pdvs.length} puntos de venta validados${V.detener ? " (detenido)" : ""}. Consultas nuevas al servicio: ${consultasReales}.`);
+  pintarV();
+}
+
+function pintarV() {
+  const cuenta = k => [...V.res.values()].filter(r => r.clase === k).length;
+  $("#vCards").innerHTML = [["Puntos de venta", V.pdvs.length], ["Validados", V.res.size], ["Corresponde", cuenta("CORRESPONDE")],
+    ["Revisar", cuenta("REVISAR_V")], ["No corresponde", cuenta("NO_CORRESPONDE")], ["Sin geo en base", cuenta("SIN_GEO_BASE")],
+    ["Geo inválida", cuenta("GEO_INVALIDA")], ["No verificable", cuenta("NO_VERIFICABLE")]]
+    .map(([t, v]) => `<div class="card"><b>${v}</b><span>${t}</span></div>`).join("");
+  const sel = $("#vFilter"), actual = sel.value;
+  sel.innerHTML = `<option value="">Todos</option>` + Object.entries(ETIQUETA_V).map(([k, e]) => `<option value="${k}"${k === actual ? " selected" : ""}>${e}</option>`).join("");
+  const cab = ["SAP", "PDV", "Ciudad", "Eventos", "Visitas", "Geo base", "Geo mapa", "Dirección en el mapa", "Diferencia", "Validación", "Motivo", "Mapa"];
+  let html = "<thead><tr>" + cab.map(c => `<th>${c}</th>`).join("") + "</tr></thead><tbody>";
+  for (const p of V.pdvs) {
+    const r = V.res.get(p.sap), clase = r ? r.clase : "NO_PROCESADO";
+    if (actual && clase !== actual) continue;
+    const g = r?.g;
+    const gb = !g ? "" : g.estado === "SI" ? `${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}` : g.estado === "NO" ? "Sin geo" : g.estado === "NO_EN_BASE" ? "No está en la base" : `Inválida (${escapar(g.textoLat)})`;
+    const gm = r?.punto ? `${r.punto[0].toFixed(6)}, ${r.punto[1].toFixed(6)}<br><small>${escapar(r.ubic)}</small>` : r ? `<small>${escapar(r.ubic || "")}</small>` : "";
+    const dist = r?.dist != null ? (r.dist >= 1000 ? `${(r.dist / 1000).toFixed(1)} km` : `${Math.round(r.dist)} m`) : "";
+    const enlaces = [g?.estado === "SI" ? `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${g.lat},${g.lon}">Base</a>` : "",
+      r?.punto ? `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${r.punto[0]},${r.punto[1]}">Mapa</a>` : ""].filter(Boolean).join(" · ");
+    html += `<tr><td>${escapar(p.sap)}</td><td>${escapar(p.nombre)}</td><td>${escapar(p.ciudad)}</td><td>${escapar([...p.eventos].join(", "))}</td>` +
+      `<td>${p.visitas}</td><td>${gb}</td><td>${gm}</td><td>${escapar(r?.direccionMapa || "")}</td><td>${dist}</td>` +
+      `<td><span class="chip ${clase}">${ETIQUETA_V[clase]}</span></td><td class="obs">${escapar(r?.motivo || "")}</td><td>${enlaces}</td></tr>`;
+  }
+  $("#vTable").innerHTML = html + "</tbody>";
+  pintarMapaV();
+}
+$("#vFilter").addEventListener("change", pintarV);
+
+function pintarMapaV() {
+  if (typeof L === "undefined") return;
+  if (!V.mapa) {
+    V.mapa = L.map("vMap").setView([4.6, -74.1], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(V.mapa);
+    V.capa = L.layerGroup().addTo(V.mapa);
+  }
+  V.capa.clearLayers();
+  const css = getComputedStyle(document.documentElement), col = v => css.getPropertyValue(v).trim();
+  const puntos = [];
+  for (const p of V.pdvs) {
+    const r = V.res.get(p.sap);
+    if (!r) continue;
+    const titulo_ = `<b>${escapar(p.nombre)}</b><br>${escapar(ETIQUETA_V[r.clase])}<br>${escapar(r.motivo)}`;
+    if (r.g?.estado === "SI") { puntos.push([r.g.lat, r.g.lon]);
+      L.circleMarker([r.g.lat, r.g.lon], {radius: 6, color: col("--accent"), fillOpacity: .8, weight: 2}).bindPopup("Geo de la base<br>" + titulo_).addTo(V.capa); }
+    if (r.punto) { puntos.push(r.punto);
+      L.circleMarker(r.punto, {radius: 6, color: col("--ok"), fillOpacity: r.ubic === "VERIFICADA" ? .85 : .2, weight: 2}).bindPopup("Ubicación en el mapa<br>" + titulo_).addTo(V.capa); }
+    if (r.g?.estado === "SI" && r.punto && r.dist > V.tol)
+      L.polyline([[r.g.lat, r.g.lon], r.punto], {color: col("--bad"), weight: 2, dashArray: "5 5"}).addTo(V.capa);
+  }
+  // Se encuadran los puntos dentro de Colombia (una geo errónea lejana no debe alejar todo el mapa)
+  const enCo = puntos.filter(q => enColombia(q[0], q[1]));
+  if (enCo.length) V.mapa.fitBounds(enCo, {padding: [30, 30], maxZoom: 15});
+}
+
+$("#vDownload").addEventListener("click", descargarV);
+function descargarV() {
+  if (!V.pdvs.length) { estadoV("No hay puntos de venta para descargar.", true); return; }
+  const pend = V.pdvs.filter(p => !V.res.has(p.sap)).length;
+  if (pend && !confirm(`Faltan ${pend} de ${V.pdvs.length} puntos de venta por validar; saldrán como NO PROCESADO.\n\n¿Descargar de todas formas?`)) return;
+  const mb = mapeoV(CAMPOS_BASE, "b_");
+  const filasV = V.pdvs.map(p => {
+    const r = V.res.get(p.sap), g = r?.g || geoBase(V.baseIdx.get(p.sap), mb);
+    return {SAP: p.sap, PDV: p.nombre, CIUDAD: p.ciudad, DIRECCION: p.direccion, EVENTOS: [...p.eventos].join(", "), VISITAS: p.visitas,
+      PRIMERA_VISITA: fmtFecha(p.primera), ULTIMA_VISITA: fmtFecha(p.ultima),
+      GEO_BASE: {SI: "SI", NO: "NO", INVALIDA: "INVALIDA", NO_EN_BASE: "NO ESTA EN BASE"}[g.estado],
+      LATITUD_BASE: g.estado === "SI" ? g.lat : g.textoLat || "", LONGITUD_BASE: g.estado === "SI" ? g.lon : g.textoLon || "",
+      GEO_OK_BASE: g.geoOk || "", LATITUD_MAPA: r?.punto ? r.punto[0] : "", LONGITUD_MAPA: r?.punto ? r.punto[1] : "",
+      DIRECCION_MAPA: r?.direccionMapa || "", UBICACION_MAPA: r ? r.ubic : "", DIFERENCIA_METROS: r?.dist != null ? Math.round(r.dist) : "",
+      VALIDACION: ETIQUETA_V[r ? r.clase : "NO_PROCESADO"], MOTIVO: r?.motivo || ""};
+  });
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(filasV);
+  ws["!cols"] = Object.keys(filasV[0]).map(k => ({wch: k === "MOTIVO" ? 70 : /PDV|DIRECCION|EVENTOS/.test(k) ? 36 : 14}));
+  XLSX.utils.book_append_sheet(wb, ws, "Validacion_PDV");
+  const wr = XLSX.utils.json_to_sheet(V.visitas);
+  XLSX.utils.book_append_sheet(wb, wr, "Rutero_filtrado");
+  const c = k => filasV.filter(f => f.VALIDACION === ETIQUETA_V[k]).length;
+  const eventos = V.sel.evento ? [...V.sel.evento] : [];
+  const resumen = [["Indicador", "Valor"], ["Fecha desde", fmtFecha($("#fDesde").value) || "(sin límite)"], ["Fecha hasta", fmtFecha($("#fHasta").value) || "(sin límite)"],
+    ["Eventos incluidos", eventos.length === (new Set(V.rutero.filas.map(f => String(f[mapeoV(CAMPOS_RUTERO, "r_").evento] ?? "").trim() || "(vacío)"))).size ? "Todos" : eventos.join(", ")],
+    ["Visitas (sin duplicados)", V.visitas.length], ["Puntos de venta únicos", V.pdvs.length],
+    ["Con geo en la base", filasV.filter(f => f.GEO_BASE === "SI").length], ["Sin geo en la base", filasV.filter(f => f.GEO_BASE === "NO").length],
+    ["Geo inválida en la base", filasV.filter(f => f.GEO_BASE === "INVALIDA").length], ["No están en la base", filasV.filter(f => f.GEO_BASE === "NO ESTA EN BASE").length],
+    [], ["Validación", ""], ...Object.keys(ETIQUETA_V).map(k => [ETIQUETA_V[k], c(k)]),
+    [], ["Tolerancia (m)", V.tol || ""], ["Servicio", document.querySelector("input[name=prov]:checked").value === "google" ? "Google Places API + Geocoding API" : "OpenStreetMap/Nominatim"],
+    ["Generado", new Date().toLocaleString("es-CO")]];
+  const wres = XLSX.utils.aoa_to_sheet(resumen);
+  wres["!cols"] = [{wch: 30}, {wch: 80}];
+  XLSX.utils.book_append_sheet(wb, wres, "Resumen");
+  XLSX.writeFile(wb, `validacion_geo_pdv_${ymd(new Date())}.xlsx`);
+}
+
 // Para pruebas automatizadas: cargarLibro(arrayBuffer, nombre)
-window.__geo = {cargarLibro, parsearDireccion, normalizada, analizarNombre, compararDireccion, parsearDireccionGoogle, ejecutar, resultados: () => resultados};
+window.__geo = {cargarLibro, parsearDireccion, normalizada, analizarNombre, compararDireccion, parsearDireccionGoogle, ejecutar,
+  resultados: () => resultados, cargarRutero, cargarBase, V, aFecha, evaluarValidacion};
 </script>
 </body>
 </html>

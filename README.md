@@ -25,6 +25,37 @@ El Excel simple, que es el que se descarga por defecto, trae tus columnas origin
 
 Si marcas *Incluir columnas de detalle*, se agregan las observaciones, la fuente, los valores originales y la hoja *Resumen*.
 
+## Pestaña «Validar rutero vs. base de PDV»
+
+Sirve para comprobar si la geo de la base de puntos de venta corresponde al local real, solo para los PDV que se van a visitar.
+
+1. Carga los dos Excel: el **rutero** (visitas) y la **base de PDV** (con `LATITUD` y `LONGITUD`). Las columnas se detectan solas.
+2. Aplica los filtros:
+   - **Fecha de visita desde**: por defecto, mañana. Puedes fijar también una fecha "hasta".
+   - **Eventos**: lista con buscador, conteo de visitas y botones Todos/Ninguno.
+   - **Estado de la visita**: por ejemplo, para excluir las canceladas.
+3. La página elimina las visitas duplicadas (mismo SAP, fecha y evento) y toma cada PDV una sola vez.
+4. Cruza cada PDV con la base para saber si tiene geo, no la tiene o la tiene inválida. Luego **busca el local en el mapa** y mide la **distancia** contra la geo de la base.
+
+Cada PDV recibe uno de estos resultados:
+
+| Validación | Significado |
+|---|---|
+| `CORRESPONDE` | La geo de la base está dentro de la tolerancia (150 m por defecto) del local encontrado. |
+| `REVISAR` | Hay una diferencia moderada (hasta 1 km) o la ubicación del mapa también está por confirmar. |
+| `NO CORRESPONDE` | Está a más de 1 km del local, o a más de 30 km del centro de la ciudad del PDV. |
+| `SIN GEO EN BASE` | La base no tiene coordenadas. Si se encontró el local, se sugiere su ubicación. |
+| `GEO INVÁLIDA EN BASE` | El valor de la base no es una coordenada válida en Colombia. |
+| `NO VERIFICABLE` | No se encontró el local en el mapa para comparar. |
+
+También avisa cuando la geo de la base tiene poca precisión o parece aproximada (por ejemplo `4.666666667`), y cuando un código está repetido en la base.
+
+El Excel descargado trae tres hojas:
+
+- `Validacion_PDV`: un PDV por fila, con la geo de la base, la geo del mapa, la diferencia en metros, la validación y el motivo.
+- `Rutero_filtrado`: las visitas que quedaron después de los filtros, sin duplicados.
+- `Resumen`: los conteos y los filtros usados.
+
 ## Publicar en GitHub Pages
 
 1. Crea un repositorio en GitHub, por ejemplo `georreferenciador`.
